@@ -4,10 +4,10 @@
     top: 50%;
     left: 50%;
     translate: -50% -50%;
-    background: url('backgroundEarth.png'), url('background3.png');
+    background: url('backgroundEarth.png'), url('background.png');
     background-color: black;
     background-size: cover;
 }
-#beetlemorph {
+#beetlemorph, #player, #player_jets {
     display: none;
 }

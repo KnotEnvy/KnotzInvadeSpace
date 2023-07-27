@@ -1,21 +1,41 @@
 class Player {
     constructor(game){
         this.game = game;
-        this.width = 100;
-        this.height = 100
+        this.width = 140;
+        this.height = 120
         this.x = this.game.width * 0.5 - this.width * 0.5
         this.y = this.game.height - this.height
         this.speed = 15
         this.lives = 3
+        this.maxLives = 10
+        this.image = document.getElementById('player')
+        this.jets_image = document.getElementById('player_jets')
+        this.frameX = 0;
+        this.jetsFrame = 1;
 
     }
     draw(c) {
-        c.fillRect(this.x, this.y, this.width, this.height)
+        //handle sprite frames
+        if (this.game.keys.indexOf('1') > -1){
+            this.frameX = 3;
+        } else {
+            this.frameX = 0;
+        }
+        // c.fillRect(this.x, this.y, this.width, this.height)
+        c.drawImage(this.jets_image, this.jetsFrame * this.width, 0, this.width, this.height,  this.x, this.y, this.width, this.height);
+        c.drawImage(this.image, this.frameX * this.width, 0, this.width, this.height,  this.x, this.y, this.width, this.height);
     }
     update(){
         //horizxontal
-        if (this.game.keys.indexOf('ArrowLeft') > -1) this.x -= this.speed;
-        if (this.game.keys.indexOf('ArrowRight') > -1) this.x += this.speed;
+        if (this.game.keys.indexOf('ArrowLeft') > -1){
+            this.x -= this.speed;
+            this.jetsFrame = 0
+        } else if (this.game.keys.indexOf('ArrowRight') > -1) {
+            this.x += this.speed;
+            this.jetsFrame = 2
+        } else {
+            this.jetsFrame =1
+        }
         //horizxontal boundaries
         if (this.x < -this.width* 0.5) this.x = -this.width*0.5;
         else  if(this.x > this.game.width -this.width*0.5) this.x = this.game.width - this.width*.5;
@@ -34,7 +54,7 @@ class Player {
 class Projectile {
     constructor(){
         this.width = 4;
-        this.height = 20;
+        this.height = 30;
         this.x = 0
         this.y = 0
         this.speed = 20;
@@ -42,7 +62,10 @@ class Projectile {
     }
     draw(c){
         if (!this.free){
+            c.save()
+            c.fillStyle = 'gold'
             c.fillRect(this.x, this.y, this.width, this.height)
+            c.restore()
         }
     }
     update(){
@@ -83,31 +106,30 @@ class Enemy {
         this.y = y + this.positionY
         //check collisions
         this.game.projectilesPool.forEach(projectile => {
-           if (!projectile.free && this.game.checkCollision(this, projectile)){
+           if (!projectile.free && this.game.checkCollision(this, projectile) && this.lives > 0){
             this.hit(1)
             projectile.reset()
             
            }
         });
         if (this.lives < 1){
-            this.frameX++;
+            if (this.game.spriteUpdate) this.frameX++;
             if (this.frameX > this.maxFrame){
                 this.markedForDeletion = true
                 if (!this.game.gameOver) this.game.score += this.maxLives
             }
         }
-        //check collision enemy plaer
-        if (this.game.checkCollision(this, this.game.player)){
-            this.markedForDeletion = true;
-            if (!this.game.gameOver && this.game.score > 0) this.game.score--;
+        //check collision enemy player
+        if (this.game.checkCollision(this, this.game.player) && this.lives > 0){
+            this.lives = 0;
             this.game.player.lives--;
-            if (this.game.player.lives < 1) this.game.gameOver = true
+
 
         }
         //lose conditions
-        if (this.y + this.height > this.game.height){
+        if (this.y + this.height > this.game.height || this.game.player.lives < 1){
             this.game.gameOver = true
-            this.markedForDeletion = true
+
         }
 
     }
@@ -185,13 +207,17 @@ class Game {
         this.fired = false
 
         // size of wave container
-        this.columns = 2;
-        this.rows = 2;
+        this.columns = 1;
+        this.rows = 1;
         this.enemySize = 80;
 
         this.waves = []
         this.waves.push(new Wave(this));
         this.waveCount = 1
+
+        this.spriteUpdate = false
+        this.spriteTimer = 0
+        this.spriteInterval = 120
         
         this.score = 0
         this.gameOver = false
@@ -213,7 +239,15 @@ class Game {
 
         });
     }
-    render(c) {
+    render(c, deltaTime) {
+        // sprite timer
+        if (this.spriteTimer > this.spriteInterval){
+            this.spriteUpdate = true
+            this.spriteTimer = 0;
+        } else {
+            this.spriteUpdate = false;
+            this.spriteTimer += deltaTime;
+        }
         this.drawStatusText(c)
         this.player.draw(c)
         this.player.update();
@@ -258,8 +292,11 @@ class Game {
         c.shadowColor = 'black'
         c.fillText('Score: '+ this.score, 20 ,40)
         c.fillText('Wave: '+ this.waveCount, 20 , 80)
+        for (let i=0; i < this.player.maxLives; i++){
+            c.strokeRect(20 +20 * i, 100, 10,15)
+        }
         for (let i=0; i < this.player.lives; i++){
-            c.fillRect(20 +10 * i, 100,5,20)
+            c.fillRect(20 +20 * i, 100,10,15)
         }
         if (this.gameOver){
             c.textAlign = 'center'
@@ -297,17 +334,22 @@ window.addEventListener('load', function(){
     canvas.height = 800;
     ctx.fillStyle = 'white'
     ctx.strokeStyle = 'white'
-    ctx.lineWidth = 5;
+
     ctx.font = '30px Impact'
     
 
     const game = new Game(canvas);
 
-    function animate() {
-        ctx.clearRect(0,0, canvas.width, canvas.height)
-        game.render(ctx);
+    let lastTime = 0;
+
+
+    function animate(timeStamp) {
+        const deltaTime = timeStamp - lastTime;
+        lastTime = timeStamp;
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        game.render(ctx, deltaTime);
         requestAnimationFrame(animate);
     }
-    animate();
+    animate(0);
 
 })
