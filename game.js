@@ -5,7 +5,7 @@ class Player {
         this.height = 120
         this.x = this.game.width * 0.5 - this.width * 0.5
         this.y = this.game.height - this.height
-        this.speed = 15
+        this.speed = 10
         this.lives = 3
         this.maxLives = 10
         this.image = document.getElementById('player')
@@ -15,11 +15,13 @@ class Player {
 
     }
     draw(c) {
-        //handle sprite frames
+        //handle Shootting frames
         if (this.game.keys.indexOf(' ') > -1){
+            this.frameX = 1;
+            this.frameX = 2;
             this.frameX = 3;
         } else {
-            this.frameX = 0;
+            this.frameX = 0 ;
         }
         // c.fillRect(this.x, this.y, this.width, this.height)
         c.drawImage(this.jets_image, this.jetsFrame * this.width, 0, this.width, this.height,  this.x, this.y, this.width, this.height);
@@ -57,7 +59,7 @@ class Projectile {
         this.height = 30;
         this.x = 0
         this.y = 0
-        this.speed = 20;
+        this.speed = 10;
         this.free = true;
     }
     draw(c){
