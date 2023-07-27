@@ -224,10 +224,11 @@ class Game {
 
         //event listeners
         window.addEventListener('keydown', e => {
-            if(e.key === '1' && !this.fired) this.player.shoot();
+            if(e.key === ' ' && !this.fired) this.player.shoot();
             this.fired = true
             if (this.keys.indexOf(e.key) === -1) this.keys.push(e.key)
             if (e.key === 'r' && this.gameOver) this.restart()
+            console.log(this.keys)
 
 
         });
