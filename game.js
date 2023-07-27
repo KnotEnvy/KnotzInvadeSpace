@@ -215,6 +215,10 @@ class Game {
         this.waves.push(new Wave(this));
         this.waveCount = 1
 
+        this.level = 1;
+        this.wavesPerLevel = 5;
+        this.levelChanged = false;
+
         this.spriteUpdate = false
         this.spriteTimer = 0
         this.spriteInterval = 120
@@ -249,6 +253,10 @@ class Game {
             this.spriteUpdate = false;
             this.spriteTimer += deltaTime;
         }
+        // Check if it's time to go to the next level
+        if (this.waveCount % this.wavesPerLevel === 0 && this.waveCount !== 0 && !this.levelChanged) {
+            this.nextLevel();
+        }
         this.drawStatusText(c)
         this.player.draw(c)
         this.player.update();
@@ -265,6 +273,13 @@ class Game {
                 if (this.player.lives < this.player.maxLives) this.player.lives++
             }
         })
+    }
+    nextLevel() {
+        this.level++;
+        this.levelChanged = true;
+        // Change the background
+        document.getElementById('canvas1').className = 'level-' + this.level;
+        // Do any other level-up logic here (e.g., increase difficulty, give the player a bonus, etc.)
     }
     //create projectiles object pool
     createProjectiles(){
@@ -292,7 +307,9 @@ class Game {
         c.shadowOffsetY = 2;
         c.shadowColor = 'black'
         c.fillText('Score: '+ this.score, 20 ,40)
-        c.fillText('Wave: '+ this.waveCount, 20 , 80)
+        c.fillText('Level: '+ this.level, 20 ,80)
+        // Draw wave at the bottom
+        c.fillText('Wave: '+ this.waveCount, 20 , this.height - 20)
         for (let i=0; i < this.player.maxLives; i++){
             c.strokeRect(20 +20 * i, 100, 10,15)
         }
@@ -309,6 +326,7 @@ class Game {
         c.restore()
     }
     newWave(){
+        this.levelChanged = false;
         if (Math.random() < 0.5 && this.columns * this.enemySize < this.width * 0.8){
             this.columns++;
         } else if (this.rows * this.enemySize < this.height * 0.6 ) { 

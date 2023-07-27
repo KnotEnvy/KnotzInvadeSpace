@@ -4,10 +4,53 @@
     top: 50%;
     left: 50%;
     translate: -50% -50%;
-    background: url('backgroundEarth.png'), url('background.png');
+    background: url('/assets/backgroundEarth.png');
     background-color: black;
     background-size: cover;
 }
 #beetlemorph, #player, #player_jets {
     display: none;
+}
+#canvas1.level-1 {
+    background: url('/assets/backgroundEarth.png');
+    background-color: black;
+    background-size: cover;
+
+}
+
+#canvas1.level-2 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background2.png');
+    background-size: cover;
+}
+#canvas1.level-3 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background3.png');
+    background-size: cover;
+}
+#canvas1.level-4 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background4.png');
+    background-size: cover;
+}
+#canvas1.level-5 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background5.png');
+    background-size: cover;
+}
+#canvas1.level-6 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background6.png');
+    background-size: cover;
+}
+#canvas1.level-7 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background7.png');
+    background-size: cover;
+}
+#canvas1.level-8 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background8.png');
+    background-size: cover;
+}
+#canvas1.level-9 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background9.png');
+
+}
+#canvas1.level-10 {
+    background: url('/assets/backgroundEarth.png'), url('/assets/background10.png');
+    background-size: cover;
 }
