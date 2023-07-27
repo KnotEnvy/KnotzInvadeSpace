@@ -6,6 +6,7 @@ class Player {
         this.x = this.game.width * 0.5 - this.width * 0.5
         this.y = this.game.height - this.height
         this.speed = 15
+        this.lives = 3
 
     }
     draw(c) {
@@ -23,6 +24,11 @@ class Player {
     shoot(){
         const projectile = this.game.getProjectile();
         if (projectile) projectile.start(this.x + this.width*0.5, this.y);
+    }
+    restart(){
+        this.x = this.game.width * 0.5 - this.width * 0.5
+        this.y = this.game.height - this.height
+        this.lives = 3
     }
 }
 class Projectile {
@@ -65,9 +71,11 @@ class Enemy {
         this.positionX = positionX
         this.positionY = positionY
         this.markedForDeletion = false;
+        
     }
     draw(c){
-        c.strokeRect(this.x, this.y, this.width, this.height)
+        // c.strokeRect(this.x, this.y, this.width, this.height)
+        c.drawImage(this.image, this.frameX * this.width, this.frameY * this.height, this.width, this.height, this.x, this.y, this.width, this.height);
 
     }
     update(x, y){
@@ -76,23 +84,61 @@ class Enemy {
         //check collisions
         this.game.projectilesPool.forEach(projectile => {
            if (!projectile.free && this.game.checkCollision(this, projectile)){
-            this.markedForDeletion = true;
+            this.hit(1)
             projectile.reset()
+            
            }
         });
+        if (this.lives < 1){
+            this.frameX++;
+            if (this.frameX > this.maxFrame){
+                this.markedForDeletion = true
+                if (!this.game.gameOver) this.game.score += this.maxLives
+            }
+        }
+        //check collision enemy plaer
+        if (this.game.checkCollision(this, this.game.player)){
+            this.markedForDeletion = true;
+            if (!this.game.gameOver && this.game.score > 0) this.game.score--;
+            this.game.player.lives--;
+            if (this.game.player.lives < 1) this.game.gameOver = true
+
+        }
+        //lose conditions
+        if (this.y + this.height > this.game.height){
+            this.game.gameOver = true
+            this.markedForDeletion = true
+        }
 
     }
+    hit(damage){
+        this.lives -= damage;
+    }
 }
+class Beetlemorth extends Enemy {
+    constructor(game, positionX, positionY){
+        super(game, positionX, positionY);
+        this.image = document.getElementById('beetlemorph');
+        this.frameX = 0;
+        this.maxFrame = 2
+        this.frameY = Math.floor(Math.random() *4)
+        this.lives = 1
+        this.maxLives = this.lives
+        
+    }
+}
+
 class Wave {
     constructor(game, ){
         this.game =game
         this.width = this.game.columns * this.game.enemySize
         this.height = this.game.rows * this.game.enemySize
-        this.x = 0
+        this.x = this.game.width * 0.5 - this.width * 0.5;
         this.y = -this.height
-        this.speedX = 3;
+        this.speedX = Math.random() < 0.5 ? -1 : 1;
         this.speedY = 0;
         this.enemies = []
+        this.nextWaveTrigger = false;
         this.create()
     }
     render(c){
@@ -116,7 +162,7 @@ class Wave {
             for(let x = 0; x <this.game.columns; x++){
                 let enemyX = x * this.game.enemySize;
                 let enemyY = y * this.game.enemySize
-                this.enemies.push(new Enemy(this.game, enemyX, enemyY))
+                this.enemies.push(new Beetlemorth(this.game, enemyX, enemyY))
             }
         }
 
@@ -136,25 +182,31 @@ class Game {
         this.projectilesPool = []
         this.numberOfProjectiles = 10;
         this.createProjectiles();
+        this.fired = false
 
         // size of wave container
-        this.columns = 5;
-        this.rows = 7;
-        this.enemySize = 60;
+        this.columns = 2;
+        this.rows = 2;
+        this.enemySize = 80;
 
         this.waves = []
         this.waves.push(new Wave(this));
+        this.waveCount = 1
         
         this.score = 0
+        this.gameOver = false
 
         //event listeners
         window.addEventListener('keydown', e => {
+            if(e.key === '1' && !this.fired) this.player.shoot();
+            this.fired = true
             if (this.keys.indexOf(e.key) === -1) this.keys.push(e.key)
-            if(e.key === '1') this.player.shoot();
+            if (e.key === 'r' && this.gameOver) this.restart()
 
 
         });
         window.addEventListener('keyup', e => {
+            this.fired = false;
             const index = this.keys.indexOf(e.key)
             if (index > -1) this.keys.splice(index, 1);
             
@@ -171,6 +223,12 @@ class Game {
         })
         this.waves.forEach(wave => {
             wave.render(c)
+            if (wave.enemies.length < 1 && !wave.nextWaveTrigger && !this.gameOver){
+                this.newWave();
+                this.waveCount++;
+                wave.nextWaveTrigger = true;
+                this.player.lives++
+            }
         })
     }
     //create projectiles object pool
@@ -194,7 +252,41 @@ class Game {
         ) 
     }
     drawStatusText(c){
-        c.fillText('Score: '+ this.game.score, 20 ,40)
+        c.save()
+        c.shadowOffsetX = 2;
+        c.shadowOffsetY = 2;
+        c.shadowColor = 'black'
+        c.fillText('Score: '+ this.score, 20 ,40)
+        c.fillText('Wave: '+ this.waveCount, 20 , 80)
+        for (let i=0; i < this.player.lives; i++){
+            c.fillRect(20 +10 * i, 100,5,20)
+        }
+        if (this.gameOver){
+            c.textAlign = 'center'
+            c.font = '100px Impact'
+            c.fillText('GAME OVER!', this.width * 0.5, this.height * 0.5)
+            c.font = '20px Impact'
+            c.fillText('Press R to restart', this.width * 0.5, this.height * 0.5 +30)
+        }
+        c.restore()
+    }
+    newWave(){
+        if (Math.random() < 0.5 && this.columns * this.enemySize < this.width * 0.8){
+            this.columns++;
+        } else if (this.rows * this.enemySize < this.height * 0.6 ) { 
+            this.rows++
+        }
+        this.waves.push(new Wave(this));
+    }
+    restart(){
+        this.player.restart()
+        this.columns = 2;
+        this.rows = 2
+        this.waves = []
+        this.waves.push(new Wave(this));
+        this.waveCount = 1
+        this.score = 0
+        this.gameOver = false
     }
 }
 
