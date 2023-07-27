@@ -16,7 +16,7 @@ class Player {
     }
     draw(c) {
         //handle sprite frames
-        if (this.game.keys.indexOf('1') > -1){
+        if (this.game.keys.indexOf(' ') > -1){
             this.frameX = 3;
         } else {
             this.frameX = 0;
@@ -34,7 +34,7 @@ class Player {
             this.x += this.speed;
             this.jetsFrame = 2
         } else {
-            this.jetsFrame =1
+            this.jetsFrame = 1
         }
         //horizxontal boundaries
         if (this.x < -this.width* 0.5) this.x = -this.width*0.5;
@@ -258,12 +258,12 @@ class Game {
             this.nextLevel();
         }
         this.drawStatusText(c)
-        this.player.draw(c)
         this.player.update();
         this.projectilesPool.forEach(projectile => {
             projectile.update();
             projectile.draw(c)
         })
+        this.player.draw(c)
         this.waves.forEach(wave => {
             wave.render(c)
             if (wave.enemies.length < 1 && !wave.nextWaveTrigger && !this.gameOver){
