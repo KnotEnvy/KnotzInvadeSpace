@@ -261,7 +261,7 @@ class Game {
                 this.newWave();
                 this.waveCount++;
                 wave.nextWaveTrigger = true;
-                this.player.lives++
+                if (this.player.lives < this.player.maxLives) this.player.lives++
             }
         })
     }
