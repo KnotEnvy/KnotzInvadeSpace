@@ -139,7 +139,7 @@ class Enemy {
         this.lives -= damage;
     }
 }
-class Beetlemorth extends Enemy {
+class Beetlemorph extends Enemy {
     constructor(game, positionX, positionY){
         super(game, positionX, positionY);
         this.image = document.getElementById('beetlemorph');
@@ -149,6 +149,21 @@ class Beetlemorth extends Enemy {
         this.lives = 1
         this.maxLives = this.lives
         
+    }
+}
+class Rhinomorph extends Enemy {
+    constructor(game, positionX, positionY){
+        super(game, positionX, positionY);
+        this.image = document.getElementById('rhinomorph');
+        this.frameX = 0;
+        this.maxFrame = 5
+        this.frameY = Math.floor(Math.random() *4)
+        this.lives = 4
+        this.maxLives = this.lives
+    }
+    hit(damage){
+        this.lives -= damage;
+        this.frameX = this.maxLives - Math.floor(this.lives);
     }
 }
 
@@ -186,7 +201,13 @@ class Wave {
             for(let x = 0; x <this.game.columns; x++){
                 let enemyX = x * this.game.enemySize;
                 let enemyY = y * this.game.enemySize
-                this.enemies.push(new Beetlemorth(this.game, enemyX, enemyY))
+                if(Math.random() < 0.5){
+                    this.enemies.push(new Rhinomorph(this.game, enemyX, enemyY))
+                    
+                } else {
+                    this.enemies.push(new Beetlemorph(this.game, enemyX, enemyY))
+
+                }
             }
         }
 
@@ -212,6 +233,7 @@ class Game {
         this.columns = 1;
         this.rows = 1;
         this.enemySize = 80;
+
 
         this.waves = []
         this.waves.push(new Wave(this));
@@ -276,13 +298,7 @@ class Game {
             }
         })
     }
-    nextLevel() {
-        this.level++;
-        this.levelChanged = true;
-        // Change the background
-        document.getElementById('canvas1').className = 'level-' + this.level;
-        // Do any other level-up logic here (e.g., increase difficulty, give the player a bonus, etc.)
-    }
+    
     //create projectiles object pool
     createProjectiles(){
         for (let i = 0; i < this.numberOfProjectiles; i++){
@@ -324,7 +340,7 @@ class Game {
             c.fillText('GAME OVER!', this.width * 0.5, this.height * 0.5)
             c.font = '20px Impact'
             c.fillText('Press R to restart', this.width * 0.5, this.height * 0.5 +30)
-        }
+        }   
         c.restore()
     }
     newWave(){
@@ -335,6 +351,14 @@ class Game {
             this.rows++
         }
         this.waves.push(new Wave(this));
+    }
+    nextLevel() {
+        this.level++;
+        this.levelChanged = true;
+        // Change the background
+        document.getElementById('canvas1').className = 'level-' + this.level;
+        // Do any other level-up logic here (e.g., increase difficulty, give the player a bonus, etc.)
+        this.score += 100;
     }
     restart(){
         this.player.restart()
