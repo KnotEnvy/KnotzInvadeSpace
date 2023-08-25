@@ -17,7 +17,7 @@ body {
     background-color: black;
     background-size: cover;
 }
-#beetlemorph, #rhinomorph, #player, #player_jets {
+#beetlemorph, #rhinomorph, #player, #player_jets, #boss {
     display: none;
 }
 

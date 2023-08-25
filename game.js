@@ -167,6 +167,40 @@ class Rhinomorph extends Enemy {
     }
 }
 
+class Boss {
+    constructor(game){
+        this.game = game
+        this.width = 200
+        this.height = 200
+        this.x = this.game.width* 0.5 - this.width * 0.5;
+        this.y = -this.height;
+        this.speedX = Math.random() < 0.5 ? -1 : 1;
+        this.speedY = 0;
+        this.lives = 10;
+        this.maxLives = this.lives;
+        this.markedForDeletion = false;
+        this.image = document.getElementById('boss')
+        this.frameX = 0
+        this.frameY = Math.floor(Math.random()* 4)
+        this.maxFrame = 11;
+    }
+    draw(c) {
+        c.drawImage(this.image, 0, 0, this.width, this.height, this.x, this.y, this.width, this.height)
+
+    }
+    update(){
+        this.speedY = 0
+        if (this.y < 0) this.y += 2
+        if(this.x < 0 || this.x > this.game.width - this.width){
+            this.speedX *=-1;
+            this.speedY = this.height * 0.5
+        }
+        this.x += this.speedX;
+        this.y += this.speedY
+    }
+
+}
+
 class Wave {
     constructor(game, ){
         this.game =game
@@ -178,6 +212,7 @@ class Wave {
         this.speedY = 0;
         this.enemies = []
         this.nextWaveTrigger = false;
+        this.markedForDeletion = false
         this.create()
     }
     render(c){
@@ -194,6 +229,7 @@ class Wave {
             enemy.draw(c);
         })
         this.enemies = this.enemies.filter(object => !object.markedForDeletion);
+        if (this.enemies.length <= 0) this.markedForDeletion = true;
     }
     create(){
         //create grid of enemies
@@ -236,12 +272,11 @@ class Game {
 
 
         this.waves = []
-        this.waves.push(new Wave(this));
         this.waveCount = 1
 
-        this.level = 1;
-        this.wavesPerLevel = 5;
-        this.levelChanged = false;
+        // this.level = 1;
+        // this.wavesPerLevel = 5;
+        // this.levelChanged = false;
 
         this.spriteUpdate = false
         this.spriteTimer = 0
@@ -249,6 +284,9 @@ class Game {
         
         this.score = 0
         this.gameOver = false
+
+        this.bossArray = []
+        this.restart()
 
         //event listeners
         window.addEventListener('keydown', e => {
@@ -278,16 +316,21 @@ class Game {
             this.spriteTimer += deltaTime;
         }
         // Check if it's time to go to the next level
-        if (this.waveCount % this.wavesPerLevel === 0 && this.waveCount !== 0 && !this.levelChanged) {
-            this.nextLevel();
-        }
+        // if (this.waveCount % this.wavesPerLevel === 0 && this.waveCount !== 0 && !this.levelChanged) {
+        //     this.nextLevel();
+        // }
         this.drawStatusText(c)
         this.player.update();
         this.projectilesPool.forEach(projectile => {
             projectile.update();
             projectile.draw(c)
         })
+        this.bossArray.forEach(boss => {
+            boss.draw(c);
+            boss.update();
+        })
         this.player.draw(c)
+        this.player.update()
         this.waves.forEach(wave => {
             wave.render(c)
             if (wave.enemies.length < 1 && !wave.nextWaveTrigger && !this.gameOver){
@@ -325,9 +368,9 @@ class Game {
         c.shadowOffsetY = 2;
         c.shadowColor = 'black'
         c.fillText('Score: '+ this.score, 20 ,40)
-        c.fillText('Level: '+ this.level, 20 ,80)
+        // c.fillText('Level: '+ this.level, 20 ,80)
         // Draw wave at the bottom
-        c.fillText('Wave: '+ this.waveCount, 20 , this.height - 20)
+        c.fillText('Wave: '+ this.waveCount, 20 , 80)
         for (let i=0; i < this.player.maxLives; i++){
             c.strokeRect(20 +20 * i, 100, 10,15)
         }
@@ -351,21 +394,24 @@ class Game {
             this.rows++
         }
         this.waves.push(new Wave(this));
+        this.waves = this.waves.filter(object => !object.markedForDeletion);
     }
-    nextLevel() {
-        this.level++;
-        this.levelChanged = true;
-        // Change the background
-        document.getElementById('canvas1').className = 'level-' + this.level;
-        // Do any other level-up logic here (e.g., increase difficulty, give the player a bonus, etc.)
-        this.score += 100;
-    }
+    // nextLevel() {
+    //     this.level++;
+    //     this.levelChanged = true;
+    //     // Change the background
+    //     document.getElementById('canvas1').className = 'level-' + this.level;
+    //     // Do any other level-up logic here (e.g., increase difficulty, give the player a bonus, etc.)
+    //     this.score += 100;
+    // }
     restart(){
         this.player.restart()
         this.columns = 2;
         this.rows = 2
         this.waves = []
-        this.waves.push(new Wave(this));
+        this.bossArray = []
+        // this.waves.push(new Wave(this));
+        this.bossArray.push(new Boss(this));
         this.waveCount = 1
         this.score = 0
         this.gameOver = false
