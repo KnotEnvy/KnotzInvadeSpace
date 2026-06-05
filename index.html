@@ -1,21 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KnotzInvadeSpace</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Knotz: Invade Space</title>
+  <!-- Orbitron loaded non-render-blocking; falls back to the system stack
+       offline so the game never stalls waiting on the network. -->
+  <link rel="preload" as="style"
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    
-</body>
-    <canvas id="canvas1"></canvas>
-    <img src="beetlemorph.png" id="beetlemorph">
-    <img src="rhinomorph.png" id="rhinomorph">
-    <img src="boss.png" id="boss">
-    <!-- <img src="assets/background8.png" id="background5"> -->
-    <img src="player.png" id="player">
-    <img src="player_jets.png" id="player_jets">
+  <div id="stage">
+    <canvas id="game"></canvas>
+  </div>
+  <noscript>This game requires JavaScript to be enabled.</noscript>
 
-    <script src="game.js"></script>
+  <!-- Modular game source, loaded in dependency order (no build step). -->
+  <script src="src/config.js"></script>
+  <script src="src/utils.js"></script>
+  <script src="src/audio.js"></script>
+  <script src="src/input.js"></script>
+  <script src="src/particles.js"></script>
+  <script src="src/starfield.js"></script>
+  <script src="src/projectile.js"></script>
+  <script src="src/powerup.js"></script>
+  <script src="src/meta.js"></script>
+  <script src="src/player.js"></script>
+  <script src="src/enemy.js"></script>
+  <script src="src/boss.js"></script>
+  <script src="src/wave.js"></script>
+  <script src="src/drone.js"></script>
+  <script src="src/hazard.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/hangar.js"></script>
+  <script src="src/game.js"></script>
+  <script src="src/main.js"></script>
+</body>
 </html>
