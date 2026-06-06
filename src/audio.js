@@ -11,8 +11,11 @@ class AudioEngine {
     this.sfxGain = null;
     this.musicGain = null;
     this.muted = false;
-    this.sfxVolume = 0.6;
-    this.musicVolume = 0.32;
+    this.sfxVolume = 0.6;          // base SFX bus level
+    this.musicVolume = 0.32;       // base music bus level
+    this.masterScale = 1;          // 0..1 user volume sliders (settings)
+    this.sfxScale = 1;
+    this.musicScale = 1;
     this._musicTimer = null;
     this._noiseBuffer = null;
     this._step = 0;
@@ -25,16 +28,15 @@ class AudioEngine {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 1;
     this.master.connect(this.ctx.destination);
 
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = this.sfxVolume;
     this.sfxGain.connect(this.master);
 
     this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = this.musicVolume;
     this.musicGain.connect(this.master);
+
+    this._applyVolumes();
 
     // Pre-bake a short white-noise buffer for explosions / hits.
     const len = this.ctx.sampleRate * 1;
@@ -47,7 +49,22 @@ class AudioEngine {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 1;
+    this._applyVolumes();
+  }
+
+  // Apply the user volume sliders (0..1) onto the live gain nodes. Safe to
+  // call before init() — values are stored and applied once the nodes exist.
+  setVolumes({ master, music, sfx } = {}) {
+    if (master != null) this.masterScale = Utils.clamp(master, 0, 1);
+    if (music != null) this.musicScale = Utils.clamp(music, 0, 1);
+    if (sfx != null) this.sfxScale = Utils.clamp(sfx, 0, 1);
+    this._applyVolumes();
+  }
+
+  _applyVolumes() {
+    if (this.master) this.master.gain.value = this.muted ? 0 : this.masterScale;
+    if (this.sfxGain) this.sfxGain.gain.value = this.sfxVolume * this.sfxScale;
+    if (this.musicGain) this.musicGain.gain.value = this.musicVolume * this.musicScale;
   }
 
   // --- low-level voice helpers -------------------------------------------

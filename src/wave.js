@@ -5,8 +5,11 @@
  * ===================================================================== */
 
 class Wave {
-  constructor(game, cols, rows, speed, armorRatio) {
+  constructor(game, cols, rows, speed, armorRatio, rng) {
     this.game = game;
+    // Composition RNG: seeded for the Daily Challenge (so formations match
+    // for everyone that day), plain Math.random otherwise.
+    this.rng = rng || Math.random;
     this.cols = cols;
     this.rows = rows;
     this.cell = CONFIG.enemy.size + CONFIG.enemy.gapX;
@@ -33,18 +36,19 @@ class Wave {
     const wc = this.game.waveCount;
     const stingerChance = Utils.clamp(0.08 + wc * 0.015, 0, 0.30);
     const splitterChance = wc >= 3 ? Utils.clamp(0.04 + wc * 0.012, 0, 0.22) : 0;
-    const eliteChance = CONFIG.elite.chance + wc * 0.004;
+    const extraElite = this.game.mode === 'daily' ? this.game.dailyMods.eliteChanceAdd : 0;
+    const eliteChance = CONFIG.elite.chance + wc * 0.004 + extraElite;
     for (let r = 0; r < this.rows; r++) {
       for (let col = 0; col < this.cols; col++) {
         const sx = col * this.cell;
         const sy = r * this.cellY;
-        const roll = Math.random();
+        const roll = this.rng();
         let e;
         if (roll < splitterChance) e = new Splitter(this.game, sx, sy);
         else if (roll < splitterChance + stingerChance) e = new Stinger(this.game, sx, sy);
-        else if (Utils.chance(armorRatio)) e = new Rhinomorph(this.game, sx, sy);
+        else if (this.rng() < armorRatio) e = new Rhinomorph(this.game, sx, sy);
         else e = new Beetlemorph(this.game, sx, sy);
-        if (Utils.chance(eliteChance)) e.makeElite();
+        if (this.rng() < eliteChance) e.makeElite();
         this.enemies.push(e);
       }
     }
@@ -70,13 +74,15 @@ class Wave {
         this.y += CONFIG.wave.descendStep;
       }
 
-      // occasionally launch a diver and let someone shoot
+      // occasionally launch a diver and let someone shoot (difficulty and the
+      // daily 'frenzy' modifier scale how aggressive the formation is)
+      const aggro = Meta.diffMods().enemyFireMul * this.game.aggroMul();
       const formation = this.enemies.filter(e => e.state === 'formation');
       if (formation.length && this.diverCount < this.maxDivers &&
-          Utils.chance(CONFIG.enemy.diveChance * k * formation.length)) {
+          Utils.chance(CONFIG.enemy.diveChance * aggro * k * formation.length)) {
         Utils.pick(formation).startDive(this.game.player);
       }
-      if (formation.length && Utils.chance(CONFIG.enemy.fireChance * k * formation.length)) {
+      if (formation.length && Utils.chance(CONFIG.enemy.fireChance * aggro * k * formation.length)) {
         // prefer a front-line shooter (largest slotY in its column-ish)
         Utils.pick(formation).shoot();
       }

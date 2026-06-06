@@ -21,6 +21,9 @@ class Player {
     // Apply persistent hangar upgrades for this run.
     this.maxLives = Meta.maxLives();
     this.lives = Meta.startLives();
+    // Daily 'glass cannon' modifier can override starting lives.
+    const dm = this.game.dailyMods;
+    if (this.game.mode === 'daily' && dm && dm.startLives != null) this.lives = dm.startLives;
     this.speed = this.cfg.speed * Meta.speedMul();
     this.maxEnergy = this.cfg.maxEnergy * Meta.energyMul();
     this.energyRegen = this.cfg.energyRegen * Meta.regenMul();
@@ -101,18 +104,19 @@ class Player {
     const muzzleX = this.x + this.width / 2;
     const muzzleY = this.y + 6;
     const speed = CONFIG.bullet.speed;
+    const dmg = CONFIG.bullet.damage * this.game.playerDamageMul();
     const col = this.rapid ? CONFIG.colors.accent : CONFIG.colors.gold;
     if (this.spread) {
       for (const ang of [-0.18, 0, 0.18]) {
         this.game.spawnBullet(muzzleX, muzzleY,
           Math.sin(ang) * speed, -Math.cos(ang) * speed,
-          { friendly: true, color: CONFIG.colors.good });
+          { friendly: true, color: CONFIG.colors.good, damage: dmg });
       }
     } else if (this.twin) {
-      this.game.spawnBullet(muzzleX - 12, muzzleY, 0, -speed, { friendly: true, color: col });
-      this.game.spawnBullet(muzzleX + 12, muzzleY, 0, -speed, { friendly: true, color: col });
+      this.game.spawnBullet(muzzleX - 12, muzzleY, 0, -speed, { friendly: true, color: col, damage: dmg });
+      this.game.spawnBullet(muzzleX + 12, muzzleY, 0, -speed, { friendly: true, color: col, damage: dmg });
     } else {
-      this.game.spawnBullet(muzzleX, muzzleY, 0, -speed, { friendly: true, color: col });
+      this.game.spawnBullet(muzzleX, muzzleY, 0, -speed, { friendly: true, color: col, damage: dmg });
     }
     this.firePose = 'fire';
     this.game.particles.muzzle(muzzleX, muzzleY, this.rapid ? CONFIG.colors.accent : CONFIG.colors.gold);
@@ -122,6 +126,7 @@ class Player {
   // Returns true if the hit was absorbed (shield) / ignored (i-frames).
   takeHit() {
     if (this.invuln > 0 || !this.alive) return true;
+    this.game.bossHitless = false;   // breaks the "Untouchable" boss streak
     if (this.shield > 0) {
       this.shield--;
       this.invuln = 600;

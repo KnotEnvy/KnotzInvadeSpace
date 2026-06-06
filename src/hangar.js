@@ -41,7 +41,7 @@ class Hangar {
     if (this.sel === this.launchIndex) { Sound.uiSelect(); this.game.newGame(); return; }
     const id = UPGRADES[this.sel].id;
     if (Meta.isMax(id)) { this.flash = 280; this.flashColor = CONFIG.colors.accent; Sound.uiMove(); return; }
-    if (Meta.buy(id)) { this.flash = 280; this.flashColor = CONFIG.colors.good; Sound.powerup(); }
+    if (Meta.buy(id)) { this.flash = 280; this.flashColor = CONFIG.colors.good; Sound.powerup(); Ach.onUpgrade(); }
     else { this.flash = 280; this.flashColor = CONFIG.colors.danger; Sound.uiMove(); } // can't afford
   }
 

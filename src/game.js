@@ -13,6 +13,13 @@ class Game {
     this.starfield = new Starfield(Assets.backgrounds);
     this.ui = new UI(this);
     this.hangar = new Hangar(this);
+    this.settings = new SettingsMenu(this);
+    // Game mode + run modifiers (read by Player.reset / Wave / spawning).
+    this.mode = 'campaign';
+    this.menuMode = 0;             // highlighted mode chip on the menu
+    this.dailyMods = Daily.neutral();
+    this.dailyKey = null;
+    this.bossHitless = false;
     this.player = new Player(this);
     this.beam = new Beam(this);
 
@@ -29,7 +36,10 @@ class Game {
     this._minionQueue = [];
 
     this.state = 'menu';
+    this.settingsReturn = 'menu';
+    this.achReturn = 'menu';
     Sound.setMuted(Meta.muted);
+    Meta.applySettings();          // push saved volume sliders onto the audio bus
     this.hiScore = Meta.hi;
     this.shakeX = 0; this.shakeY = 0; this.shakeMag = 0; this.shakeTime = 0; this.shakeDur = 1;
 
@@ -47,6 +57,7 @@ class Game {
     this.bossesSlain = 0;
     this.victory = false;
     this.newHiScore = false;
+    this.newDailyBest = false;
     this.gameOverPending = false;
     this.deathTimer = 0;
     this.creditsEarned = 0;
@@ -54,11 +65,30 @@ class Game {
 
   _tempo() { return Math.min(1.6, 1 + this.level * 0.06); }
 
+  // --- run-modifier helpers (mode/daily aware) ----------------------------
+  aggroMul()        { return this.mode === 'daily' ? this.dailyMods.aggroMul : 1; }
+  playerDamageMul() { return this.mode === 'daily' ? this.dailyMods.playerDamageMul : 1; }
+  bossEvery()       { return this.mode === 'daily' ? this.dailyMods.bossEvery : CONFIG.wave.bossEvery; }
+  // Seeded composition RNG for the Daily Challenge; plain random otherwise.
+  waveRng() {
+    if (this.mode !== 'daily' || !this.dailyKey) return Math.random;
+    return Utils.makeRng(Daily.waveSeed(this.dailyKey, this.waveCount));
+  }
+
   // --- lifecycle ----------------------------------------------------------
-  newGame() {
+  newGame(mode) {
+    if (mode) this.mode = mode;
     Sound.init();
     Sound.resume();
     this.resetStats();
+    // Resolve run modifiers for the chosen mode.
+    this.dailyMods = Daily.neutral();
+    this.dailyKey = null;
+    if (this.mode === 'daily') {
+      const d = Daily.today();
+      this.dailyKey = d.key;
+      this.dailyMods = d.agg;
+    }
     this.particles.clear();
     this.waves = [];
     this.boss = null;
@@ -81,13 +111,29 @@ class Game {
   openHangar() { this.state = 'hangar'; this.hangar.open(); Sound.uiSelect(); }
   toMenu() { this.state = 'menu'; Sound.stopMusic(); }
 
+  // Settings can be opened from menu / pause / game-over; "back" returns there.
+  openSettings(from) { this.settingsReturn = from || 'menu'; this.state = 'settings'; this.settings.open(); Sound.uiSelect(); }
+  closeSettings() { this.state = this.settingsReturn || 'menu'; Sound.uiSelect(); }
+
+  // Read-only achievements viewer, openable from menu / game-over.
+  openAchievements(from) { this.achReturn = from || 'menu'; this.state = 'achievements'; Sound.uiSelect(); }
+  closeAchievements() { this.state = this.achReturn || 'menu'; Sound.uiSelect(); }
+
   endGame() {
     this.state = 'gameover';
     Sound.stopMusic();
-    Sound.gameOver();
+    if (this.victory) Sound.extraLife(); else Sound.gameOver();
     if (this.score > Meta.hi) { Meta.hi = this.score; this.newHiScore = true; }
-    this.creditsEarned = Meta.award(this.score, this.waveCount, this.bossesSlain);
+    const creditMul = this.mode === 'daily' ? this.dailyMods.creditMul : 1;
+    this.creditsEarned = Meta.award(this.score, this.waveCount, this.bossesSlain, creditMul);
     this.hiScore = Meta.hi;
+    // Daily-challenge bookkeeping + run-end achievements.
+    if (this.mode === 'daily' && this.dailyKey) {
+      this.newDailyBest = Meta.setDailyBest(this.dailyKey, this.score);
+      Ach.onDailyComplete();
+    }
+    Ach.onScore(this.score);
+    Ach.onCredits();
     Meta.save();
   }
 
@@ -109,29 +155,70 @@ class Game {
 
   // --- wave / boss spawning ----------------------------------------------
   startWaveOrBoss() {
-    if (this.waveCount % CONFIG.wave.bossEvery === 0) {
-      this.boss = new Boss(this, this.bossesSlain + 1);
-      this.showBanner('WARNING', 'OVERLORD APPROACHES', CONFIG.colors.danger);
+    Ach.onWave(this.waveCount);
+    if (this.waveCount % this.bossEvery() === 0) {
+      const tier = this.bossesSlain + 1;
+      const finalBoss = this.mode === 'campaign' && tier >= CONFIG.campaign.winBosses;
+      this.boss = new Boss(this, tier);
+      this.bossHitless = true;     // track the "Untouchable" streak for this fight
+      if (finalBoss) this.starfield.setBackground(CONFIG.campaign.finaleBackground);
+      this.showBanner(finalBoss ? 'FINAL BOSS' : 'WARNING',
+        this.boss.def.name + ' APPROACHES', CONFIG.colors.danger);
       Sound.bossAlarm();
     } else {
       const w = CONFIG.wave;
-      const cols = Utils.clamp(w.baseCols + Math.floor((this.waveCount - 1) / 2), w.baseCols, w.maxCols);
-      const rows = Utils.clamp(w.baseRows + Math.floor((this.waveCount - 1) / 4), w.baseRows, w.maxRows);
-      const speed = w.baseSpeed + (this.waveCount - 1) * w.speedPerWave;
+      const cols = Utils.clamp(w.baseCols + Math.floor((this.waveCount - 1) / 2) + this.dailyMods.extraCols, w.baseCols, w.maxCols + 1);
+      const rows = Utils.clamp(w.baseRows + Math.floor((this.waveCount - 1) / 4) + this.dailyMods.extraRows, w.baseRows, w.maxRows + 1);
+      const baseSpeed = Math.min(w.baseSpeed + (this.waveCount - 1) * w.speedPerWave, w.maxSpeed);
+      const speed = baseSpeed * Meta.diffMods().enemySpeedMul;
       const armor = Utils.clamp(0.12 + this.waveCount * 0.03, 0, 0.6);
-      this.waves = [new Wave(this, cols, rows, speed, armor)];
+      this.waves = [new Wave(this, cols, rows, speed, armor, this.waveRng())];
       this.showBanner('WAVE ' + this.waveCount, null, CONFIG.colors.accent);
       Sound.waveStart();
+      this.maybeSpawnMiniBoss();
     }
   }
 
+  // Some ordinary waves get a mini-boss escort: an optional, fast fight
+  // that drops loot. The formation keeps marching, so it's added pressure
+  // rather than a pause — and the sector won't clear until it's down.
+  maybeSpawnMiniBoss() {
+    if (this.boss || this.waveCount < CONFIG.boss.miniFromWave) return;
+    if (!Utils.chance(CONFIG.boss.miniChance)) return;
+    const tier = 1 + Math.floor(this.waveCount / (CONFIG.wave.bossEvery * 2));
+    this.boss = new Boss(this, tier, { mini: true });
+    this.showBanner('MINI-BOSS', this.boss.def.name, CONFIG.colors.accent2);
+    Sound.bossAlarm();
+  }
+
   onBossDefeated(boss) {
-    this.addScore(boss.score, boss.x + boss.width / 2, boss.y + boss.height / 2, true);
-    this.bossesSlain++;
+    const cx = boss.x + boss.width / 2, cy = boss.y + boss.height / 2;
+    this.addScore(boss.score, cx, cy, true);
     this.boss = null;
+
+    // Mini-bosses are a side reward: loot, but the sector isn't cleared —
+    // the formation (if any still stands) must finish out the wave.
+    if (boss.mini) {
+      this.spawnPowerUp(cx, cy);
+      if (Utils.chance(0.5)) this.spawnPowerUp(cx + Utils.rand(-30, 30), cy, Utils.chance(0.4) ? 'life' : undefined);
+      this.showBanner('MINI-BOSS DOWN', '+' + Utils.commas(boss.score), CONFIG.colors.good);
+      return;
+    }
+
+    this.bossesSlain++;
+    Ach.onBossKill(boss.def, this.bossHitless);
     for (let i = 0; i < 4; i++)
       this.spawnPowerUp(boss.x + Utils.rand(0, boss.width), boss.y + Utils.rand(0, boss.height));
-    this.spawnPowerUp(boss.x + boss.width / 2, boss.y + boss.height / 2, 'life');
+    this.spawnPowerUp(cx, cy, 'life');
+
+    // Campaign mode ends in victory once enough bosses have fallen.
+    if (this.mode === 'campaign' && this.bossesSlain >= CONFIG.campaign.winBosses) {
+      this.victory = true;
+      Ach.onVictory();
+      this.endGame();
+      return;
+    }
+
     this.level++;
     this.starfield.setBackground(this.level - 1);
     Sound.startMusic(this._tempo());
@@ -151,6 +238,8 @@ class Game {
     this.combo = this.comboTimer > 0 ? Math.min(this.combo + 1, CONFIG.combo.max) : 1;
     this.comboTimer = CONFIG.combo.window;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
+    Ach.onKill();
+    Ach.onCombo(this.combo);
     const gain = enemy.score * this.combo;
     this.score += gain;
     this.particles.popup(x, y - 10, '+' + gain,
@@ -229,11 +318,13 @@ class Game {
   updateHazards(dt) {
     this.hazardTimer -= dt;
     if (this.hazardTimer <= 0) {
-      const interval = Math.max(CONFIG.hazard.spawnMin, CONFIG.hazard.spawnBase - this.level * 350);
+      const rate = this.mode === 'daily' ? this.dailyMods.hazardRateMul : 1;
+      const interval = Math.max(CONFIG.hazard.spawnMin, CONFIG.hazard.spawnBase - this.level * 350) / rate;
       this.hazardTimer = interval * Utils.rand(0.7, 1.3);
       // a bit calmer while a boss is on screen
       if (!this.boss || Utils.chance(0.5)) {
-        const sizeKey = Utils.chance(0.6) ? 'big' : 'med';
+        const bigChance = this.mode === 'daily' ? this.dailyMods.bigAsteroidChance : 0.6;
+        const sizeKey = Utils.chance(bigChance) ? 'big' : 'med';
         const x = Utils.rand(60, CONFIG.WIDTH - 60);
         this.asteroids.push(new Asteroid(this, x, -50, sizeKey));
       }
@@ -263,6 +354,7 @@ class Game {
 
   // --- screen shake -------------------------------------------------------
   shake(mag, dur) {
+    if (!Meta.shakeEnabled()) return;   // disabled via Settings / reduced-motion
     if (mag >= this.shakeMag || this.shakeTime <= 0) this.shakeMag = mag;
     this.shakeTime = Math.max(this.shakeTime, dur);
     this.shakeDur = Math.max(this.shakeDur, dur);
@@ -278,8 +370,10 @@ class Game {
     this.starfield.update(dt);
     this.particles.update(dt);
     this.updateShake(dt);
+    Ach.update(dt);
 
     if (this.state === 'hangar') this.hangar.update(dt);
+    if (this.state === 'settings') this.settings.update(dt);
     if (this.state !== 'playing') return;
 
     this.player.update(dt);
@@ -331,7 +425,7 @@ class Game {
       if (hit) continue;
       if (this.boss && this.boss.vulnerable && Utils.aabb(b, this.boss)) {
         this.boss.hit(b.damage, this);
-        this.particles.sparks(b.x + b.width / 2, b.y, CONFIG.colors.boss, -Math.PI / 2, 5);
+        this.particles.sparks(b.x + b.width / 2, b.y, this.boss.def.color, -Math.PI / 2, 5);
         Sound.hit();
         b.free = true;
         continue;
@@ -394,23 +488,49 @@ class Game {
     if (i.wasPressed('m')) { Sound.init(); Sound.setMuted(!Sound.muted); Meta.muted = Sound.muted; }
 
     switch (this.state) {
-      case 'menu':
-        if (i.wasPressed('Enter') || clicked) { Sound.init(); Sound.uiSelect(); this.newGame(); }
-        else if (i.wasPressed('h')) { Sound.init(); this.openHangar(); }
+      case 'menu': {
+        const modes = CONFIG.modes;
+        if (i.wasPressed('ArrowLeft')) { this.menuMode = (this.menuMode - 1 + modes.length) % modes.length; Sound.uiMove(); }
+        else if (i.wasPressed('ArrowRight')) { this.menuMode = (this.menuMode + 1) % modes.length; Sound.uiMove(); }
+        if (i.wasPressed('h')) { Sound.init(); this.openHangar(); }
+        else if (i.wasPressed('o')) { Sound.init(); this.openSettings('menu'); }
+        else if (i.wasPressed('a')) { Sound.init(); this.openAchievements('menu'); }
+        else if (clicked) {
+          const hit = (this.ui.menuRects || []).find(r =>
+            i.pointer.x >= r.x && i.pointer.x <= r.x + r.w && i.pointer.y >= r.y && i.pointer.y <= r.y + r.h);
+          if (hit) {
+            Sound.init();
+            if (hit.kind === 'mode') { this.menuMode = hit.index; Sound.uiMove(); }
+            else if (hit.kind === 'launch') { Sound.uiSelect(); this.newGame(modes[this.menuMode].id); }
+            else if (hit.kind === 'hangar') this.openHangar();
+            else if (hit.kind === 'settings') this.openSettings('menu');
+            else if (hit.kind === 'achievements') this.openAchievements('menu');
+          }
+        } else if (i.wasPressed('Enter', ' ')) { Sound.init(); Sound.uiSelect(); this.newGame(modes[this.menuMode].id); }
         break;
+      }
       case 'hangar':
         this.hangar.handleInput(i);
+        break;
+      case 'settings':
+        this.settings.handleInput(i);
+        break;
+      case 'achievements':
+        if (i.wasPressed('Enter', ' ', 'Escape', 'q') || clicked) this.closeAchievements();
         break;
       case 'playing':
         if (i.wasPressed('Escape', 'p')) { this.state = 'paused'; Sound.stopMusic(); Sound.uiSelect(); }
         break;
       case 'paused':
         if (i.wasPressed('Escape', 'p')) { this.state = 'playing'; Sound.startMusic(this._tempo()); }
+        else if (i.wasPressed('o')) this.openSettings('paused');
         else if (i.wasPressed('q')) this.toMenu();
         break;
       case 'gameover':
         if (i.wasPressed('Enter') || clicked) { Sound.uiSelect(); this.newGame(); }
         else if (i.wasPressed('h')) this.openHangar();
+        else if (i.wasPressed('o')) this.openSettings('gameover');
+        else if (i.wasPressed('a')) this.openAchievements('gameover');
         else if (i.wasPressed('q')) this.toMenu();
         break;
     }
@@ -422,7 +542,8 @@ class Game {
   draw(c) {
     this.starfield.draw(c);
 
-    const worldVisible = this.state !== 'menu' && this.state !== 'hangar';
+    const worldVisible = this.state !== 'menu' && this.state !== 'hangar' &&
+      this.state !== 'settings' && this.state !== 'achievements';
     if (worldVisible) {
       c.save();
       c.translate(this.shakeX, this.shakeY);
@@ -434,8 +555,14 @@ class Game {
       this.ui.drawMenu(c);
     } else if (this.state === 'hangar') {
       this.hangar.draw(c);
+    } else if (this.state === 'settings') {
+      this.settings.draw(c);
+    } else if (this.state === 'achievements') {
+      Ach.drawScreen(c);
     } else {
       this.ui.drawHUD(c);
+      if ((this.state === 'playing' || this.state === 'paused') && this.input.buttonsActive())
+        this.ui.drawTouchControls(c, this.input);
       if (this.banner) {
         const b = this.banner, d = b.duration;
         let a = 1;
@@ -446,6 +573,9 @@ class Game {
       if (this.state === 'paused') this.ui.drawPause(c);
       if (this.state === 'gameover') this.ui.drawGameOver(c);
     }
+
+    // Achievement toasts float above everything, in every state.
+    Ach.drawToasts(c);
   }
 
   drawWorld(c) {

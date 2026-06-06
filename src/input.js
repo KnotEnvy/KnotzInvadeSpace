@@ -2,6 +2,8 @@
  * input.js — Unified keyboard + pointer/touch input.
  * Exposes high-level intents (left/right/fire/beam) plus edge-triggered
  * "pressed" queries for menus, so game code never touches raw events.
+ * Multi-touch aware: tracks every active touch (and the mouse) so the
+ * on-screen control overlay can drive movement + fire + beam at once.
  * ===================================================================== */
 
 class Input {
@@ -9,10 +11,39 @@ class Input {
     this.canvas = canvas;
     this.keys = new Set();          // currently-held physical keys
     this.pressed = new Set();       // keys pressed since last consume()
-    this.pointer = { active: false, x: 0, y: 0, fire: false, beam: false };
-    this.touchLeft = false;
-    this.touchRight = false;
+    this.pointer = { active: false, x: 0, y: 0, fire: false, beam: false, clicked: false };
+    this.touches = new Map();       // id -> {x,y} for every active touch / mouse
+    this.hasTouch = ('ontouchstart' in window) ||
+      (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);
     this._listeners();
+  }
+
+  // Should the on-screen buttons be live? (setting + device)
+  buttonsActive() {
+    const m = (Meta && Meta.settings && Meta.settings.touchControls) || 'auto';
+    if (m === 'off') return false;
+    if (m === 'on') return true;
+    return this.hasTouch;
+  }
+
+  // Design-space rect for an on-screen button (shared by Input + UI).
+  buttonRect(kind) {
+    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, t = CONFIG.touch;
+    const by = H - t.bottom;
+    switch (kind) {
+      case 'left':  return { x: t.pad, y: by, w: t.size, h: t.size };
+      case 'right': return { x: t.pad + t.size + t.gap, y: by, w: t.size, h: t.size };
+      case 'fire':  return { x: W - t.pad - t.size, y: by, w: t.size, h: t.size };
+      case 'beam':  return { x: W - t.pad - t.size, y: by - t.size - t.gap, w: t.size, h: t.size };
+    }
+    return { x: 0, y: 0, w: 0, h: 0 };
+  }
+  _touchOn(kind) {
+    if (!this.buttonsActive()) return false;
+    const r = this.buttonRect(kind);
+    for (const p of this.touches.values())
+      if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return true;
+    return false;
   }
 
   _listeners() {
@@ -28,9 +59,8 @@ class Input {
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       this.keys.delete(k);
     });
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => { this.keys.clear(); this.touches.clear(); });
 
-    // Pointer (mouse + touch unified). Used by both gameplay and menus.
     const toCanvas = (clientX, clientY) => {
       const r = this.canvas.getBoundingClientRect();
       return {
@@ -38,38 +68,53 @@ class Input {
         y: (clientY - r.top) / r.height * CONFIG.HEIGHT,
       };
     };
-    const down = (cx, cy) => {
-      const p = toCanvas(cx, cy);
-      this.pointer.active = true;
-      this.pointer.x = p.x; this.pointer.y = p.y;
-      this.pointer.fire = true;
-      this.pointer.clicked = true;
-    };
-    const move = (cx, cy) => {
-      const p = toCanvas(cx, cy);
-      this.pointer.x = p.x; this.pointer.y = p.y;
-    };
-    const up = () => { this.pointer.active = false; this.pointer.fire = false; };
 
-    this.canvas.addEventListener('mousedown', (e) => down(e.clientX, e.clientY));
-    this.canvas.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
-    window.addEventListener('mouseup', up);
+    // Unified press / move / release keyed by a pointer id ('mouse' or touch id).
+    const press = (id, cx, cy) => {
+      const p = toCanvas(cx, cy);
+      this.touches.set(id, p);
+      this.pointer.x = p.x; this.pointer.y = p.y; this.pointer.clicked = true;
+      // Legacy drag-to-move + tap-to-fire only when the button overlay is off.
+      if (!this.buttonsActive()) { this.pointer.active = true; this.pointer.fire = true; }
+    };
+    const moveTo = (id, cx, cy) => {
+      const p = toCanvas(cx, cy);
+      if (this.touches.has(id)) this.touches.set(id, p);
+      this.pointer.x = p.x; this.pointer.y = p.y;
+    };
+    const release = (id) => {
+      this.touches.delete(id);
+      if (this.touches.size === 0) { this.pointer.active = false; this.pointer.fire = false; }
+    };
+
+    // Mouse (single pointer).
+    this.canvas.addEventListener('mousedown', (e) => press('mouse', e.clientX, e.clientY));
+    this.canvas.addEventListener('mousemove', (e) => moveTo('mouse', e.clientX, e.clientY));
+    window.addEventListener('mouseup', () => release('mouse'));
+
+    // Touch (multi-pointer).
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      const t = e.changedTouches[0]; down(t.clientX, t.clientY);
+      for (const t of e.changedTouches) press(t.identifier, t.clientX, t.clientY);
     }, { passive: false });
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      const t = e.changedTouches[0]; move(t.clientX, t.clientY);
+      for (const t of e.changedTouches) moveTo(t.identifier, t.clientX, t.clientY);
     }, { passive: false });
-    this.canvas.addEventListener('touchend', (e) => { e.preventDefault(); up(); }, { passive: false });
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) release(t.identifier);
+    }, { passive: false });
+    this.canvas.addEventListener('touchcancel', (e) => {
+      for (const t of e.changedTouches) release(t.identifier);
+    }, { passive: false });
   }
 
   // --- high-level intents (held) -----------------------------------------
-  get left()  { return this.keys.has('ArrowLeft') || this.keys.has('a') || this.touchLeft; }
-  get right() { return this.keys.has('ArrowRight') || this.keys.has('d') || this.touchRight; }
-  get fire()  { return this.keys.has(' ') || this.pointer.fire; }
-  get beam()  { return this.keys.has('Shift') || this.keys.has('x') || this.pointer.beam; }
+  get left()  { return this.keys.has('ArrowLeft') || this.keys.has('a') || this._touchOn('left'); }
+  get right() { return this.keys.has('ArrowRight') || this.keys.has('d') || this._touchOn('right'); }
+  get fire()  { return this.keys.has(' ') || this.pointer.fire || this._touchOn('fire'); }
+  get beam()  { return this.keys.has('Shift') || this.keys.has('x') || this.pointer.beam || this._touchOn('beam'); }
 
   // --- edge-triggered (consume once) -------------------------------------
   wasPressed(...keys) {

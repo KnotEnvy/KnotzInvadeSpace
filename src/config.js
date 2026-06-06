@@ -60,6 +60,7 @@ const CONFIG = {
     descendStep: 22,        // pixels dropped at each edge bounce
     baseSpeed: 0.9,
     speedPerWave: 0.12,
+    maxSpeed: 3.4,          // cap so very deep waves stay fair (balance pass)
     bossEvery: 5,           // every Nth wave is a boss wave
   },
 
@@ -69,6 +70,14 @@ const CONFIG = {
     baseLives: 60,
     livesPerTier: 35,
     speed: 1.8,
+    // Mini-boss escorts that can appear on ordinary (non-boss) waves.
+    // They're a quick optional fight: smaller, lower HP, drop loot, but
+    // do NOT clear the sector (the formation must still be beaten).
+    miniScale: 0.56,        // body size vs a full boss
+    miniHpMul: 0.34,        // health vs a same-tier full boss
+    miniEntryY: 132,        // how far down a mini-boss hovers
+    miniFromWave: 4,        // earliest wave a mini-boss may show up
+    miniChance: 0.28,       // chance per eligible wave to spawn one
   },
 
   powerup: {
@@ -139,8 +148,60 @@ const CONFIG = {
   // Auto-firing wingman granted by the Combat Drone upgrade.
   drone: { fireCooldown: 520, orbitRadius: 62, bulletSpeed: 12, color: '#46e0ff' },
 
-  // Run-end credit payout that funds the hangar.
-  credits: { perScore: 0.012, perWave: 8, perBoss: 60 },
+  // Run-end credit payout that funds the hangar. (Balance pass: nudged up so
+  // the first upgrade lands after ~2 solid runs and bosses feel worth it.)
+  credits: { perScore: 0.015, perWave: 8, perBoss: 75 },
+
+  // Default player settings (persisted per-profile; tweakable in-game).
+  // Volumes are 0..1 multipliers; shake/reducedMotion are toggles.
+  settings: {
+    master: 1, music: 1, sfx: 1,
+    shake: true, reducedMotion: false, difficulty: 'normal',
+    touchControls: 'auto',   // 'auto' (show on touch devices) | 'on' | 'off'
+  },
+
+  // On-screen touch button layout (design-space rects, mirrored by Input + UI).
+  touch: { pad: 22, gap: 16, size: 96, bottom: 152 },
+
+  // Difficulty presets. Multipliers fan out across enemy aggression, speed,
+  // boss durability/fire cadence, the credit payout and starting lives.
+  // (bossFireMul scales the fire *interval*, so >1 = the boss fires slower.)
+  difficulty: {
+    easy:   { label: 'EASY',   enemyFireMul: 0.72, enemySpeedMul: 0.92, bossHpMul: 0.85, bossFireMul: 1.25, creditMul: 0.80, lifeBonus: 1 },
+    normal: { label: 'NORMAL', enemyFireMul: 1.00, enemySpeedMul: 1.00, bossHpMul: 1.00, bossFireMul: 1.00, creditMul: 1.00, lifeBonus: 0 },
+    hard:   { label: 'HARD',   enemyFireMul: 1.45, enemySpeedMul: 1.12, bossHpMul: 1.30, bossFireMul: 0.82, creditMul: 1.35, lifeBonus: 0 },
+  },
+
+  // Game modes selectable from the menu.
+  modes: [
+    { id: 'campaign', label: 'CAMPAIGN', desc: 'Clear 5 sectors to reach Earth' },
+    { id: 'endless',  label: 'ENDLESS',  desc: 'Survive as long as you can' },
+    { id: 'daily',    label: 'DAILY',    desc: "Seeded run · today's modifiers" },
+  ],
+
+  // Campaign mode: a defined run with a victory at the end.
+  campaign: {
+    winBosses: 5,          // defeat this many bosses to win (reach the finale)
+    finaleBackground: 8,   // backgrounds[] index of backgroundEarth.png
+  },
+
+  // Daily Challenge: a date-seeded run with a couple of random modifiers.
+  // The seed makes every player face the same formations on a given day.
+  daily: {
+    pickCount: 2,
+    modifiers: [
+      { id: 'eliteSwarm',    label: 'ELITE SWARM',    desc: 'Elites everywhere',          patch: { eliteChanceAdd: 0.30 } },
+      { id: 'frenzy',        label: 'FRENZY',         desc: 'Hyper-aggressive aliens',    patch: { aggroMul: 1.8 } },
+      { id: 'asteroidStorm', label: 'ASTEROID STORM', desc: 'Relentless hazards',         patch: { hazardRateMul: 2.2, bigAsteroidChance: 0.85 } },
+      { id: 'bossRush',      label: 'BOSS RUSH',      desc: 'Bosses every 3rd wave',      patch: { bossEvery: 3 } },
+      { id: 'glassCannon',   label: 'GLASS CANNON',   desc: '1 life, double damage',      patch: { startLives: 1, playerDamageMul: 2 } },
+      { id: 'swarm',         label: 'SWARM',          desc: 'Bigger formations',          patch: { extraCols: 1, extraRows: 1 } },
+      { id: 'bounty',        label: 'BOUNTY RUN',     desc: '+50% credits',               patch: { creditMul: 1.5 } },
+    ],
+  },
+
+  // Save schema version (bumped when the persisted shape changes; see meta.js).
+  saveVersion: 2,
 
   storageKey: 'knotz_invade_space_save_v1',
 };

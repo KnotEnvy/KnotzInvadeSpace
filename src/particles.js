@@ -86,12 +86,17 @@ class Particles {
 
   emit(x, y, opt) { this._get().spawn(x, y, opt); }
 
+  // Reduced-motion (accessibility) thins emitter counts so the screen is
+  // calmer; popups/score text are always kept for readability.
+  _count(n) { return Meta.reducedMotion() ? Math.max(1, Math.round(n * 0.3)) : n; }
+
   popup(x, y, text, color = '#fff', size = 22) {
     this._getPopup().spawn(x, y, text, color, size);
   }
 
   // A circular burst of glowing embers + a few debris chunks.
   explosion(x, y, color, count = 22, power = 1) {
+    count = this._count(count);
     for (let i = 0; i < count; i++) {
       const a = Utils.rand(0, Math.PI * 2);
       const sp = Utils.rand(1, 6) * power;
@@ -108,6 +113,7 @@ class Particles {
 
   // Sparks that fly out in a cone — used for bullet impacts.
   sparks(x, y, color, dir = -Math.PI / 2, count = 8) {
+    count = this._count(count);
     for (let i = 0; i < count; i++) {
       const a = dir + Utils.rand(-0.9, 0.9);
       const sp = Utils.rand(2, 6);
@@ -126,6 +132,7 @@ class Particles {
 
   // Thruster trail behind the ship.
   thruster(x, y, color) {
+    if (Meta.reducedMotion()) return;   // skip the constant exhaust stream
     this.emit(x, y, {
       vx: Utils.rand(-0.5, 0.5), vy: Utils.rand(1.5, 3),
       life: Utils.rand(160, 300), size: Utils.rand(2, 4), color, glow: 6, drag: 0.95,

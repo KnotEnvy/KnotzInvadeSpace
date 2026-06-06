@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json.schemastore.org/package.json-ish-handoff",
+  "handoffVersion": "2.0",
+  "generatedOn": "2026-06-04",
+  "audience": "The next team is responsible for the AAA-level VISUAL overhaul. Gameplay/systems are feature-complete; see 'forTheVisualsTeam' for exactly where art/render hooks live.",
+  "project": {
+    "name": "Knotz: Invade Space",
+    "tagline": "A modern, juiced-up roguelite reimagining of Space Invaders.",
+    "genre": "Arcade shoot-'em-up with roguelite meta-progression",
+    "repo": "https://github.com/KnotEnvy/KnotzInvadeSpace",
+    "defaultBranch": "main",
+    "license": "MIT",
+    "playLoop": "Pick a mode (Campaign / Endless / Daily) -> play a run -> earn credits -> spend them in the Hangar on permanent upgrades -> chase a higher score, deeper sectors, the Campaign victory, the daily leaderboard, and 14 achievements."
+  },
+
+  "status": {
+    "summary": "Content-complete roguelite. Six build phases shipped. No known runtime errors (validated headlessly across all states + modes).",
+    "phasesCompleted": [
+      { "phase": 1, "date": "2026-06-01", "title": "Modern arcade rebuild", "delivered": "Modular vanilla-JS engine: juice (shake/particles/hit-flash/trails/combos), Galaga dive AI, energy beam, 6 power-ups, multi-phase boss every 5th wave, endless background progression, synthesized Web Audio SFX+music, keyboard+touch, responsive canvas, localStorage hi-score, menu/pause/game-over." },
+      { "phase": 2, "date": "2026-06-02", "title": "Roguelite meta + content", "delivered": "Persistent profile + Hangar shop (7 upgrades), new enemies (Stinger, Splitter) + elite modifier, Combat Drone, Magnet, twin Auto-Cannons, Aegis shield, splitting asteroid hazards, credit payouts." },
+      { "phase": 3, "date": "2026-06-04", "title": "Boss & mini-boss variety", "delivered": "Rewrote boss.js into a DATA-DRIVEN class. BOSS_TYPES (Overlord/Weaver/Warden) rotate per encounter with distinct attack patterns (aimed/spread/ring/spiral/shotgun/curtain) + sweep styles; MINIBOSS_TYPES (Sentinel/Lancer) escort some waves with a floating health bar." },
+      { "phase": 4, "date": "2026-06-04", "title": "Settings + accessibility + difficulty", "delivered": "New 'settings' state (settings.js): master/music/SFX volume sliders, screen-shake toggle, reduced-motion toggle, difficulty (easy/normal/hard), touch-controls mode. Save schema v2 with forward-migration. Difficulty fans out across enemy aggression/speed, boss HP/fire, credits and start lives." },
+      { "phase": 5, "date": "2026-06-04", "title": "Achievements + Daily Challenge", "delivered": "achievements.js (14 unlockables, toasts, viewer) + daily.js (date-seeded run with 2 random modifiers; deterministic formations; per-day best). Mulberry32 PRNG in utils.js." },
+      { "phase": 6, "date": "2026-06-04", "title": "Game modes + Campaign victory", "delivered": "CONFIG.modes (campaign/endless/daily). Campaign ends in a VICTORY screen after winBosses bosses (Earth finale background). Menu rebuilt with clickable mode chips + LAUNCH + Hangar/Settings/Awards buttons." },
+      { "phase": 7, "date": "2026-06-04", "title": "Mobile on-screen controls", "delivered": "Rewrote input.js for multi-touch; on-screen ◀ ▶ / FIRE / BEAM buttons (UI.drawTouchControls). 'touchControls' setting: auto/on/off." },
+      { "phase": 8, "date": "2026-06-04", "title": "Economy & difficulty balance pass", "delivered": "Credit payout nudged up (perScore .015, perBoss 75); added CONFIG.wave.maxSpeed cap for fair deep waves. Remaining balance is data in CONFIG for playtesters." }
+    ],
+    "codeSize": { "srcFiles": 22, "srcLinesOfCode": 3759 }
+  },
+
+  "techStack": {
+    "language": "Vanilla JavaScript (ES2020), no framework",
+    "rendering": "HTML5 Canvas 2D",
+    "audio": "Web Audio API (all SFX + music synthesized at runtime, zero audio files)",
+    "build": "NONE. No bundler, transpiler, package.json, or node_modules.",
+    "modules": "Plain classic <script> tags in dependency order (NOT ES modules) so the game runs by double-clicking index.html over file:// with no server. Each file defines globals; cross-file refs resolve at call time.",
+    "runtimeForTooling": "Node v24.x (only for the optional headless smoke test / screenshots; not required to play)."
+  },
+
+  "howToRun": {
+    "play": "Open index.html in any modern browser. No server or install.",
+    "note": "Audio starts on first key press / tap (autoplay policy). Everything is synthesized.",
+    "optionalLocalServer": "Only needed if you switch to ES modules or fetch(); then serve over http (npx serve / Live Server)."
+  },
+
+  "howToDevelop": {
+    "workflow": "Edit files under src/, refresh the browser. No compile step.",
+    "addingAFile": "Create src/yourfile.js and add a <script> to index.html at the right dependency position (see scriptLoadOrder).",
+    "tuning": "Balance/look knobs live in src/config.js (CONFIG). Upgrades in src/meta.js (UPGRADES). Bosses in src/boss.js (BOSS_TYPES/MINIBOSS_TYPES). Achievements in src/achievements.js (ACHIEVEMENTS). Daily modifiers in CONFIG.daily.modifiers.",
+    "debugging": "window.game exposes the live Game instance. window.game.openSettings('menu'), .openAchievements('menu'), .newGame('daily') etc. are handy.",
+    "verification": "node --check src/*.js for syntax. For runtime, reuse the Node-VM smoke technique (see verification section) — it mocks the browser, concatenates all src except main.js, and drives every state/mode/boss."
+  },
+
+  "architecture": {
+    "entryPoint": "src/main.js -> boot() on DOMContentLoaded: preloads assets, sizes canvas, runs the fixed-timestep loop.",
+    "gameLoop": "Fixed-timestep sim. game.update(dt) always called with dt = CONFIG.STEP_MS (1000/60). Motion multiplies by k = dt/STEP_MS. Render decoupled per animation frame. Spiral-of-death guard caps catch-up at 5 steps.",
+    "stateMachine": "game.state in: 'menu', 'hangar', 'settings', 'achievements', 'playing', 'paused', 'gameover'. Transitions centralized in Game.handleInput(); Game.draw()/update() branch on state. Overlay states ('settings','achievements') remember their opener via settingsReturn / achReturn.",
+    "gameModes": "game.mode in 'campaign' | 'endless' | 'daily'. Set by newGame(mode) from the menu. Daily resolves game.dailyMods (a run-modifier aggregate) + game.dailyKey; helpers Game.aggroMul/playerDamageMul/bossEvery/waveRng read it. Campaign ends in victory after CONFIG.campaign.winBosses bosses.",
+    "entityManagement": "Pools for bullets (player+drone share game.bullets), enemyBullets, powerups, particles. Enemies in Wave.enemies; asteroids in game.asteroids; drones in game.drones; one boss/mini-boss at a time in game.boss.",
+    "coordinateConventions": "Most entities use TOP-LEFT x/y + width/height (so Utils.aabb works). Gotchas: (1) Game.spawnBullet/spawnEnemyBullet take a CENTER and convert to top-left. (2) Asteroid stores a center but exposes a tightened x/y/w/h AABB. (3) Enemies store slotX/slotY; absolute pos = wave.x/y + slot. (4) Boss stores top-left x/y; width/height already include its scale.",
+    "renderOrder": "Game.drawWorld(): starfield -> powerups -> enemy bullets -> asteroids -> wave enemies -> boss -> player bullets -> beam -> drones -> player -> particles. Then (outside the screen-shake translate): HUD + touch overlay + banner + pause/gameover overlays, and finally Ach.drawToasts() on top in EVERY state."
+  },
+
+  "scriptLoadOrder": [
+    "src/config.js", "src/utils.js", "src/audio.js", "src/input.js",
+    "src/particles.js", "src/starfield.js", "src/projectile.js", "src/powerup.js",
+    "src/meta.js", "src/achievements.js", "src/daily.js", "src/player.js",
+    "src/enemy.js", "src/boss.js", "src/wave.js", "src/drone.js", "src/hazard.js",
+    "src/ui.js", "src/hangar.js", "src/settings.js", "src/game.js", "src/main.js"
+  ],
+
+  "fileMap": {
+    "src/config.js": { "exports": "CONFIG (global)", "role": "All tunables: resolution, timestep, player/bullet/enemy/wave/boss stats, hazards, drone, credits, palette (CONFIG.colors), background list, sprite-sheet frame layouts, AND newer blocks: settings defaults, difficulty presets, modes, campaign, daily.modifiers, touch button layout, saveVersion, storageKey." },
+    "src/utils.js": { "exports": "Utils", "role": "Math (clamp/lerp/rand/randInt/pick/chance/dist), Utils.aabb, easing, commas, Utils.text + Utils.roundRect canvas helpers, and Utils.makeRng (mulberry32) + Utils.hashStr (seed the Daily)." },
+    "src/audio.js": { "exports": "AudioEngine, Sound (singleton)", "role": "Synthesized SFX + procedural music. setMuted + setVolumes({master,music,sfx}) layered over base bus levels via _applyVolumes(); safe to call before init()." },
+    "src/input.js": { "exports": "Input", "role": "Unified keyboard + MULTI-touch + mouse. touches Map; high-level intents left/right/fire/beam (keys + on-screen buttons); buttonRect/_touchOn/buttonsActive for the touch overlay; wasPressed/consumePressed for menus. Maps client coords to the 720x960 design space." },
+    "src/particles.js": { "exports": "Particle, Popup, Particles", "role": "Pooled particles (explosions/sparks/muzzle/thruster) + floating score popups. Reduced-motion thins counts via _count() and skips thruster; bullet trails handled in projectile.js." },
+    "src/starfield.js": { "exports": "Starfield", "role": "Parallax background: the sector's space image (drifting/looping) + 3 scrolling star layers. setBackground(index)." },
+    "src/projectile.js": { "exports": "Bullet, Beam", "role": "Pooled glowing bullets (friendly flag distinguishes player vs enemy; reduced-motion skips trails). Beam = continuous energy column doing DPS." },
+    "src/powerup.js": { "exports": "POWERUP_TYPES, PowerUp", "role": "Falling collectibles: rapid, spread, shield, energy, bomb, life." },
+    "src/meta.js": { "exports": "UPGRADES, MetaProfile, Meta (singleton)", "role": "ROGUELITE CORE + persistence. Save schema v2 with forward-migration: { version, hi, credits, upgrades, muted, settings, achievements, daily }. Upgrade catalog; derived run modifiers; settings getters (shakeEnabled/reducedMotion/difficulty/diffMods); achievements (isUnlocked/unlockAch); daily best (dailyBest/setDailyBest). award(score,waves,bosses,extraMul)." },
+    "src/achievements.js": { "exports": "ACHIEVEMENTS, Achievements, Ach (singleton)", "role": "14 unlockables. Semantic hooks (onKill/onCombo/onWave/onBossKill/onScore/onCredits/onUpgrade/onVictory/onDailyComplete) decide unlocks; 'apex' rolls up after the 3 boss kills. drawToasts() (slide-in cards, any state) + drawScreen() (the 'achievements' viewer)." },
+    "src/daily.js": { "exports": "DailyChallenge, Daily (singleton)", "role": "Date-seeded run. todayKey() identity; modifiersFor(key) picks CONFIG.daily.pickCount distinct modifiers deterministically; aggregate() merges patches onto neutral(); waveSeed(key,n) seeds per-wave composition; today() cached snapshot; best(key)." },
+    "src/player.js": { "exports": "Player", "role": "Ship: movement+banking, primary fire (single/twin/spread/rapid), energy/beam, shield, lives, i-frames, applyPowerUp(). reset() reads Meta upgrades + difficulty + daily startLives; shoot() applies game.playerDamageMul(); takeHit() clears game.bossHitless (for the Untouchable achievement)." },
+    "src/enemy.js": { "exports": "Enemy, Beetlemorph, Rhinomorph, Stinger, Splitter", "role": "Formation/dive/return/dying states + Galaga dive AI. makeElite() promotes any enemy. Splitter bursts into diving minions via game.queueMinion()." },
+    "src/boss.js": { "exports": "BOSS_TYPES, MINIBOSS_TYPES, Boss", "role": "DATA-DRIVEN bosses. Each def: name/frameY/color/move(sine|figure8|lumber)/scale/hpMul/scoreMul/fireBase/fireMin/phases. runStep() turns an attack-step {type:aimed|spread|ring|spiral|shotgun|curtain} into bullets. Full bosses rotate by tier; mini-bosses (opts.mini) are smaller, drop loot, don't clear the sector. Difficulty scales HP + fire cadence. drawHealthBar (top bar) / drawMiniBar (floating)." },
+    "src/wave.js": { "exports": "Wave", "role": "Formation marcher. constructor(...,rng): composition RNG is seeded for the Daily. create() rolls enemy types/elites (+ daily eliteChanceAdd). Aggression = Meta.diffMods().enemyFireMul * game.aggroMul(). Detects invasion (loss)." },
+    "src/drone.js": { "exports": "Drone", "role": "Auto-firing wingman from the Combat Drone upgrade; fires from the shared bullet pool." },
+    "src/hazard.js": { "exports": "Asteroid", "role": "Rotating asteroid that falls, shatters big->med->small. Daily can raise spawn rate + big chance." },
+    "src/ui.js": { "exports": "UI", "role": "ALL on-screen UI: HUD (drawHUD), the rebuilt menu (drawMenu, builds UI.menuRects clickable hit-rects + mode chips + buttons), pause (drawPause), game-over/victory (drawGameOver), wave/boss banners (drawBanner), and the touch overlay (drawTouchControls). Pure drawing — Game owns state." },
+    "src/hangar.js": { "exports": "Hangar", "role": "Between-runs upgrade shop ('hangar' state). Keyboard + mouse/touch. Fires Ach.onUpgrade() on a successful buy." },
+    "src/settings.js": { "exports": "SettingsMenu", "role": "The 'settings' state. Volume sliders + shake/reduced-motion toggles + difficulty/touch-controls cycles. Keyboard (arrows/Enter) and click/drag (rebuilds hit-rects each draw). Persists via Meta.setSetting (-> save + applySettings)." },
+    "src/game.js": { "exports": "Game", "role": "ORCHESTRATOR. State machine, modes (newGame(mode), dailyMods, campaign victory), all pools, collisions, scoring/combos, wave+boss progression + mini-boss escorts, hazards, drones, magnet, screen shake (gated by Meta.shakeEnabled), banners, achievement hooks, and meta/credits." },
+    "src/main.js": { "exports": "Assets (global), loadAssets(), boot(), the rAF loop", "role": "Asset preloader + loading screen, responsive canvas sizing, fixed-timestep loop." }
+  },
+
+  "forTheVisualsTeam": {
+    "mission": "Replace/augment the programmer-art rendering with AAA visuals WITHOUT changing gameplay timing or the file:// no-build constraint. Most draw code is isolated in *.draw(c) methods using a single Canvas 2D context.",
+    "noBuildConstraint": "Keep classic <script> tags (no ES modules / no fetch) so index.html still runs by double-click. If you need a build pipeline or asset loading via fetch, you must add a static server and update howToRun + main.js loadAssets.",
+    "whereRenderingLives": {
+      "perEntity": "Each entity owns a draw(c): Player.draw, Enemy.draw, Boss.draw, Bullet.draw + Beam.draw (projectile.js), PowerUp.draw, Asteroid.draw (hazard.js), Drone.draw, Particle/Popup.draw (particles.js), Starfield.draw.",
+      "uiAndScreens": "src/ui.js (HUD/menu/pause/gameover/banner/touch overlay), src/hangar.js (shop), src/settings.js (settings), src/achievements.js (toasts + viewer).",
+      "compositing": "Game.draw() applies the screen-shake translate around drawWorld only; HUD/overlays/toasts draw in screen space after. Many effects use ctx.globalCompositeOperation = 'lighter' for additive glow."
+    },
+    "artAssets": {
+      "spriteSheets": {
+        "player.png": "560x120, 4x 140x120 (0 idle, 1 firing, 3 beam pose used).",
+        "player_jets.png": "420x120, 3x 140x120 (bank left/center/right, drawn behind ship).",
+        "beetlemorph.png": "240x320, 3 cols x 4 rows of 80x80 (cols 0/1 idle flap; 4 colour rows). Stinger pins frameY=1.",
+        "rhinomorph.png": "480x320, 6 cols x 4 rows of 80x80 (cols 0-3 damage frames; 4 colour rows). Splitter pins frameY=2.",
+        "boss.png": "2200x800, 11 cols x 4 rows of 200x200 (frameX 0/1 idle; frameY = archetype/tier colour). Boss archetypes use frameY 0/1/2; mini-bosses use frameY 3."
+      },
+      "backgrounds": "10 space backdrops in assets/ (background*.png + backgroundEarth.png), cycled per sector via Starfield.setBackground(level-1). backgroundEarth is index 8 = the Campaign finale (CONFIG.campaign.finaleBackground).",
+      "palette": "CONFIG.colors is the single source of truth for entity/UI hues. Bosses get distinct bullet colours via their def.color (Overlord=boss orange, Weaver=rhino purple, Warden=danger red).",
+      "fonts": "Orbitron (Google Fonts, non-render-blocking) with a system fallback. All text goes through Utils.text (drop-shadow + optional glow)."
+    },
+    "suggestedVisualUpgrades": [
+      "Higher-res sprite sheets / animated frames for player, enemies, bosses (keep the frame layout in CONFIG.sprites, or extend it).",
+      "Replace procedural Asteroid drawing (hazard.js) with sprites if desired.",
+      "Richer particle textures / additive bloom; reduced-motion already thins counts (respect Meta.reducedMotion()).",
+      "Boss attack telegraphs / unique muzzle FX per attack 'type' in Boss.runStep.",
+      "Parallax depth, nebula layers, and a proper finale set-piece over Earth on Campaign victory.",
+      "Polished mode chips / buttons / toasts; the layout + hit-rects already exist in ui.js + achievements.js.",
+      "On-screen touch buttons (UI.drawTouchControls) are functional placeholders — restyle freely; geometry is CONFIG.touch and must stay in sync with Input.buttonRect."
+    ],
+    "doNotBreak": [
+      "Coordinate conventions (top-left AABB) and the center-based spawnBullet API.",
+      "Reduced-motion + screen-shake gating (Meta.reducedMotion()/shakeEnabled()) — accessibility.",
+      "Deterministic Daily: don't route Wave composition through unseeded randomness (it uses wave.rng / game.waveRng()).",
+      "The fixed-timestep contract: render may change freely, but update(dt) timing must not."
+    ]
+  },
+
+  "keySystems": {
+    "metaProgression": {
+      "credits": "Earned at run end: floor((score*0.015 + waves*8 + bosses*75) * difficulty.creditMul * dailyMul) (CONFIG.credits + Meta.award).",
+      "upgrades": "7 upgrades in UPGRADES (meta.js): hull, engine, beam, cannon (twin at Lv2), magnet, drone, aegis. Applied at Player.reset()/Game.newGame() via Meta derived getters.",
+      "persistence": "localStorage key 'knotz_invade_space_save_v1'. Schema v2: { version, hi, credits, upgrades, muted, settings, achievements, daily }. Meta.load() forward-migrates older saves (missing fields filled from CONFIG defaults) — never wipes credits/upgrades."
+    },
+    "gameModes": "CONFIG.modes. CAMPAIGN ends in VICTORY after CONFIG.campaign.winBosses bosses (Earth finale bg, g.victory flag drives the screen). ENDLESS = unbounded. DAILY = date-seeded run with 2 random CONFIG.daily.modifiers; deterministic formations (Utils.makeRng + Daily.waveSeed); per-day best in Meta (shown on the menu).",
+    "difficulty": "CONFIG.difficulty[easy|normal|hard] multipliers read via Meta.diffMods(): enemyFireMul, enemySpeedMul, bossHpMul, bossFireMul, creditMul, lifeBonus. Chosen in Settings.",
+    "bosses": "Data-driven (boss.js). 3 archetypes rotate by tier on boss waves; mini-bosses escort some normal waves. Attack 'steps' compose patterns; phases driven by remaining HP.",
+    "achievements": "14 in ACHIEVEMENTS (achievements.js). Ach.* hooks fire from game.js/hangar.js; toasts slide in (Ach.drawToasts) in any state; viewer is the 'achievements' state.",
+    "settings": "settings.js / 'settings' state. Volume (master/music/sfx) -> Sound.setVolumes; screen shake + reduced motion (accessibility); difficulty; touch controls. All persist instantly.",
+    "input": "input.js multi-touch. On-screen buttons live when Input.buttonsActive() (setting auto/on/off + device touch). CONFIG.touch is the shared layout for Input.buttonRect + UI.drawTouchControls.",
+    "deferredMinionSpawn": "Splitter death enqueues minions via game.queueMinion(); flushed in Game._flushMinions() AFTER collision resolution. Follow this for any mid-frame entity spawn.",
+    "screenShake": "game.shake(mag, durMs) — no-op when Meta.shakeEnabled() is false. Applied as a translate around drawWorld only.",
+    "audio": "Sound singleton. Named SFX + startMusic(tempo)/stopMusic(). Volumes via setVolumes()/_applyVolumes()."
+  },
+
+  "controls": {
+    "move": "Arrow Left/Right or A/D, on-screen ◀ ▶, or (when touch buttons are off) drag",
+    "fire": "Space, on-screen FIRE, or (buttons off) tap & hold",
+    "beam": "Shift or X, or on-screen BEAM",
+    "pause": "Esc or P",
+    "mute": "M",
+    "menu": "Left/Right select mode · Enter/Tap or click LAUNCH to start · H Hangar · O Settings · A Awards (all buttons are clickable)",
+    "settings": "Arrows select, Left/Right adjust, Enter toggle, click/drag sliders, Q/Esc back",
+    "achievementsViewer": "Enter / Tap / Q to close",
+    "gameover": "Enter/Tap retry · H hangar · O settings · A awards · Q menu",
+    "quitToMenu": "Q (when paused or on game-over)"
+  },
+
+  "verification": {
+    "philosophy": "No automated suite is checked in (scratch harnesses kept out of the repo). Two reproducible techniques were used heavily this build:",
+    "smokeTest": "Node VM harness: mocks the browser (Proxy 2D ctx, fake Image/localStorage/window, stub Assets), concatenates all src/*.js EXCEPT main.js into one VM context, then drives game.update/draw across every state AND mode. This build validated: all 3 bosses + 2 mini-bosses to death, daily modifier + wave-composition determinism, campaign victory + Champion, achievement unlocks incl. apex/flawless rollups, menu mode-chip clicks + LAUNCH, the achievements viewer, daily-best recording, multi-touch button intents, and v1->v2 save migration.",
+    "visualScreenshots": "Headless Edge via the DevTools Protocol from Node (global fetch + WebSocket). Launch msedge --headless=new --remote-debugging-port=PORT --remote-allow-origins=* --user-data-dir=<unique>, poll /json/list for the page target, Runtime.evaluate to force a state (e.g. window.game.openAchievements / newGame('daily') / spawn a Boss), then Page.captureScreenshot. window.game is the live instance.",
+    "gotchas": [
+      "Edge --screenshot=PATH silently fails if PATH has a space; capture via CDP or write to C:/Temp/...",
+      "Give each concurrent Edge launch a unique --user-data-dir + port and kill lingering msedge.exe between runs.",
+      "In the VM harness, expose `canvas` on the sandbox and build the Assets stub AFTER CONFIG exists; loop conditions that re-read game.boss can race with a boss dying inside update() — re-check before dereferencing."
+    ]
+  },
+
+  "knownIssuesAndGotchas": [
+    "Single active wave at a time (game.waves holds 0 or 1). A mini-boss shares the single game.boss slot and blocks sector-clear until killed.",
+    "ES modules intentionally avoided. Introducing import/export or fetch() breaks the file:// double-click workflow (serve over http instead).",
+    "Daily determinism covers WAVE COMPOSITION + modifiers; power-up drop types and particles still use Math.random (cosmetic / fair-enough). If you want fully deterministic dailies, route those through game.waveRng-style seeded streams too.",
+    "Orbitron font loads non-render-blocking; layout assumes the system fallback is acceptable offline.",
+    "Mouse does not actuate the on-screen touch buttons unless touchControls='on' (they're driven by the touches map; mouse is added to it on press). 'auto' hides them on non-touch devices.",
+    "Balance is improved but still first-pass beyond difficulty modes; tune CONFIG.credits / UPGRADES / CONFIG.wave / CONFIG.difficulty against real playtests.",
+    "Achievement toasts draw in every state and can briefly overlap a busy screen if many unlock at once."
+  ],
+
+  "roadmap": {
+    "primaryNext": "AAA VISUAL OVERHAUL — see forTheVisualsTeam. Gameplay systems are complete; this is the headline remaining pillar.",
+    "secondarySuggestions": [
+      { "item": "Online / shared daily leaderboard", "why": "Daily best is local-only; a backend would make the seeded mode competitive.", "where": "daily.js + a service" },
+      { "item": "More bosses / mini-bosses + attack 'step' types", "why": "The data-driven system makes this cheap.", "where": "boss.js BOSS_TYPES/MINIBOSS_TYPES + runStep" },
+      { "item": "More achievements + cosmetic unlocks tied to credits", "why": "Extends the meta loop.", "where": "achievements.js + meta.js" },
+      { "item": "Colorblind-safe palette option", "why": "Builds on the accessibility settings already in place.", "where": "Settings + CONFIG.colors" },
+      { "item": "Deeper economy/difficulty playtest tuning", "why": "Numbers are reasonable but unvalidated at scale.", "where": "CONFIG.credits, UPGRADES, CONFIG.wave, CONFIG.difficulty" }
+    ]
+  },
+
+  "quickStartForNewDev": [
+    "1. Open index.html in a browser — it just runs (no install).",
+    "2. Read README.md (player overview), then this handoff. If you're on visuals, read forTheVisualsTeam first.",
+    "3. Skim src/config.js (all knobs) and src/game.js (orchestrator); they anchor everything. For rendering, every entity's draw(c) + src/ui.js are your map.",
+    "4. window.game in the console drives the live game (openSettings/openAchievements/newGame('daily')/spawn a Boss).",
+    "5. Sanity-check edits with node --check src/*.js; for deeper checks reuse the Node-VM smoke technique under 'verification'.",
+    "6. Keep the no-build (classic <script>, file://) and fixed-timestep contracts intact."
+  ]
+}

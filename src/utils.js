@@ -11,6 +11,25 @@ const Utils = {
   chance(p) { return Math.random() < p; },
   dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); },
 
+  // Deterministic PRNG (mulberry32). makeRng(seed) returns a function that
+  // yields the next float in [0,1) — used for the seeded Daily Challenge so
+  // every player faces the same formations for a given day.
+  makeRng(seed) {
+    let a = (seed >>> 0) || 1;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  },
+  // Hash a string to a 32-bit int (seeds the daily RNG from a date key).
+  hashStr(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  },
+
   // Axis-aligned bounding-box overlap. Objects expose {x, y, width, height}.
   aabb(a, b) {
     return (

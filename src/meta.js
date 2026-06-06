@@ -19,16 +19,25 @@ class MetaProfile {
   constructor() { this.data = this.load(); }
 
   load() {
-    const def = { hi: 0, credits: 0, upgrades: {}, muted: false };
+    const def = {
+      version: CONFIG.saveVersion, hi: 0, credits: 0, upgrades: {}, muted: false,
+      settings: { ...CONFIG.settings }, achievements: {}, daily: {},
+    };
     try {
       const raw = localStorage.getItem(CONFIG.storageKey);
       if (!raw) return def;
       const p = JSON.parse(raw);
+      // Forward-compatible migration: older saves (v1, no `settings`) keep
+      // their credits/upgrades and gain the new fields from defaults.
       return {
+        version: CONFIG.saveVersion,
         hi: p.hi || 0,
         credits: p.credits || 0,
         upgrades: p.upgrades || {},
         muted: !!p.muted,
+        settings: { ...CONFIG.settings, ...(p.settings || {}) },
+        achievements: p.achievements || {},
+        daily: p.daily || {},
       };
     } catch { return def; }
   }
@@ -40,6 +49,45 @@ class MetaProfile {
   set hi(v) { this.data.hi = Math.floor(v); }
   get muted() { return this.data.muted; }
   set muted(v) { this.data.muted = !!v; this.save(); }
+
+  // --- player settings ---------------------------------------------------
+  get settings() { return this.data.settings; }
+  setSetting(key, value) {
+    this.data.settings[key] = value;
+    this.save();
+    this.applySettings();
+  }
+  // Push audio-affecting settings onto the live engine. Called at boot and
+  // whenever a slider changes (other settings are read on demand).
+  applySettings() {
+    const s = this.data.settings;
+    Sound.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
+  }
+  shakeEnabled()  { return this.data.settings.shake !== false && !this.reducedMotion(); }
+  reducedMotion() { return !!this.data.settings.reducedMotion; }
+  difficulty()    { return this.data.settings.difficulty || 'normal'; }
+  diffMods()      { return CONFIG.difficulty[this.difficulty()] || CONFIG.difficulty.normal; }
+
+  // --- achievements ------------------------------------------------------
+  get achievements() { return this.data.achievements; }
+  isUnlocked(id) { return !!this.data.achievements[id]; }
+  unlockAch(id) {
+    if (this.data.achievements[id]) return false;   // already had it
+    this.data.achievements[id] = Date.now();
+    this.save();
+    return true;
+  }
+
+  // --- daily-challenge best scores (kept small: last ~10 days) -----------
+  dailyBest(key) { return this.data.daily[key] || 0; }
+  setDailyBest(key, score) {
+    if (score <= (this.data.daily[key] || 0)) return false;
+    this.data.daily[key] = Math.floor(score);
+    const keys = Object.keys(this.data.daily).sort();
+    while (keys.length > 10) delete this.data.daily[keys.shift()];
+    this.save();
+    return true;
+  }
 
   // --- upgrade catalog access -------------------------------------------
   def(id) { return UPGRADES.find((u) => u.id === id); }
@@ -56,16 +104,17 @@ class MetaProfile {
   }
 
   // Award credits at the end of a run; returns the amount earned.
-  award(score, waves, bosses) {
+  award(score, waves, bosses, extraMul = 1) {
     const c = CONFIG.credits;
-    const gain = Math.floor(score * c.perScore + waves * c.perWave + bosses * c.perBoss);
+    const raw = score * c.perScore + waves * c.perWave + bosses * c.perBoss;
+    const gain = Math.floor(raw * this.diffMods().creditMul * extraMul);
     this.credits += gain;
     this.save();
     return gain;
   }
 
   // --- derived run modifiers (read by player/game at launch) ------------
-  startLives() { return CONFIG.player.startLives + this.level('hull'); }
+  startLives() { return CONFIG.player.startLives + this.level('hull') + this.diffMods().lifeBonus; }
   maxLives()   { return CONFIG.player.maxLives + this.level('hull'); }
   speedMul()   { return 1 + 0.08 * this.level('engine'); }
   energyMul()  { return 1 + 0.25 * this.level('beam'); }

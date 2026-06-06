@@ -32,15 +32,17 @@ class Bullet {
     if (this.free) return;
     c.save();
     c.globalCompositeOperation = 'lighter';
-    // trail
-    for (let i = 0; i < this.trail.length; i++) {
-      const t = 1 - i / this.trail.length;
-      c.globalAlpha = t * 0.5;
-      c.fillStyle = this.color;
-      const r = this.width * 0.6 * t;
-      c.beginPath();
-      c.arc(this.trail[i].x, this.trail[i].y, r, 0, Math.PI * 2);
-      c.fill();
+    // trail (skipped under reduced-motion for a calmer screen)
+    if (!Meta.reducedMotion()) {
+      for (let i = 0; i < this.trail.length; i++) {
+        const t = 1 - i / this.trail.length;
+        c.globalAlpha = t * 0.5;
+        c.fillStyle = this.color;
+        const r = this.width * 0.6 * t;
+        c.beginPath();
+        c.arc(this.trail[i].x, this.trail[i].y, r, 0, Math.PI * 2);
+        c.fill();
+      }
     }
     c.globalAlpha = 1;
     c.shadowColor = this.color;
