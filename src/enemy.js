@@ -28,6 +28,8 @@ class Enemy {
     this.scale = 1;
     this.elite = false;
     this.diveUrge = 0;       // autonomous dive tendency (Stingers use this)
+    this.spawnT = 0;         // warp-in timer (materialise on appear)
+    this.phase = Utils.rand(0, Math.PI * 2);  // per-enemy idle-bob phase
   }
 
   // Promote any enemy into a tougher, glowing "elite" worth more.
@@ -56,6 +58,7 @@ class Enemy {
   update(dt, waveX, waveY) {
     const k = dt / CONFIG.STEP_MS;
     this.anim += dt;
+    this.spawnT += dt;
     if (this.hitFlash > 0) this.hitFlash -= dt;
 
     if (this.state === 'dying') {
@@ -85,6 +88,13 @@ class Enemy {
       this.x += this.vx * k;
       this.y += this.vy * k;
       this.frameX = (Math.floor(this.anim / 120) % 2 === 0) ? 0 : 1;
+      // glowing dive trail
+      if (Meta.trailsOn() && !Meta.reducedMotion() && Utils.chance(0.6 * k)) {
+        this.game.particles.emit(this.x + this.width / 2, this.y + this.height * 0.3, {
+          vx: Utils.rand(-0.4, 0.4), vy: Utils.rand(-1.5, -0.5), life: Utils.rand(140, 260),
+          size: Utils.rand(2, 3.5), color: this.color, glow: 8, drag: 0.93,
+        });
+      }
       // dive shooting
       if (Utils.chance(0.004 * k)) this.shoot(true);
       // looped off the bottom -> re-enter from the top heading for the slot
@@ -135,9 +145,17 @@ class Enemy {
     this.state = 'dying';
     this.deathTimer = 220;
     const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
-    this.game.particles.explosion(cx, cy, this.color, 20, 1);
+    if (this.elite) {
+      // Elites pop with a textured blast + a beat of hit-stop.
+      this.game.particles.explosionBig(cx, cy, this.color, 'gold', 1.3);
+      this.game.shake(9, 200);
+      this.game.freeze(45);
+    } else {
+      this.game.particles.explosion(cx, cy, this.color, 20, 1);
+      this.game.particles.shockwave(cx, cy, this.color, { r0: 3, r1: this.width * 0.8, life: 280, lw: 2.5 });
+      this.game.shake(5, 120);
+    }
     Sound.explode();
-    this.game.shake(5, 120);
     if (dropped && game) {
       game.onEnemyKilled(this, cx, cy);
     }
@@ -160,26 +178,43 @@ class Enemy {
       c.restore();
     }
     const s = CONFIG.sprites[this.spriteKey];
+    const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
+    const sx = this.frameX * s.frameW, sy = this.frameY * s.frameH;
+
+    // Materialise (warp-in) + idle breathing.
+    const warp = Utils.clamp(this.spawnT / 340, 0, 1);
+    const bobY = this.state === 'formation' ? Math.sin(this.anim / 420 + this.phase) * 2.2 : 0;
+    let alpha = 1, scl = this.state === 'formation' ? 1 + Math.sin(this.anim / 520 + this.phase) * 0.02 : 1;
+    if (this.state === 'dying') { alpha = Utils.clamp(this.deathTimer / 220, 0, 1); scl = this.scale; }
+    else if (warp < 1) { alpha *= warp; scl *= 0.45 + 0.55 * Utils.easeOutCubic(warp); }
+
     c.save();
-    if (this.state === 'dying') {
-      c.globalAlpha = Utils.clamp(this.deathTimer / 220, 0, 1);
-      const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
-      c.translate(cx, cy);
-      c.scale(this.scale, this.scale);
-      c.translate(-cx, -cy);
-    }
-    if (this.image && this.image.complete) {
-      c.drawImage(this.image, this.frameX * s.frameW, this.frameY * s.frameH,
-        s.frameW, s.frameH, this.x, this.y, this.width, this.height);
-    }
+    c.globalAlpha = alpha;
+    c.translate(cx, cy + bobY);
+    c.scale(scl, scl);
+    if (this.image && this.image.complete)
+      c.drawImage(this.image, sx, sy, s.frameW, s.frameH, -this.width / 2, -this.height / 2, this.width, this.height);
     // white hit-flash overlay
     if (this.hitFlash > 0 && this.image && this.image.complete) {
       c.globalAlpha = (this.hitFlash / 90) * 0.8;
       c.globalCompositeOperation = 'lighter';
-      c.drawImage(this.image, this.frameX * s.frameW, this.frameY * s.frameH,
-        s.frameW, s.frameH, this.x, this.y, this.width, this.height);
+      c.drawImage(this.image, sx, sy, s.frameW, s.frameH, -this.width / 2, -this.height / 2, this.width, this.height);
     }
     c.restore();
+
+    // warp-in flash bloom
+    if (warp < 1 && this.state !== 'dying' && Meta.fx()) {
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.globalAlpha = (1 - warp) * 0.7;
+      c.fillStyle = this.color;
+      c.shadowColor = this.color;
+      c.shadowBlur = 24;
+      c.beginPath();
+      c.arc(cx, cy, this.width * (0.4 + (1 - warp) * 0.5), 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+    }
   }
 }
 

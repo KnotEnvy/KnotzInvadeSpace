@@ -40,6 +40,7 @@ class Player {
     this.rapidTimer = 0;
     this.spreadTimer = 0;
     this.bankVel = 0;
+    this.recoil = 0;        // brief kick-back on firing (visual only)
   }
 
   get rapid() { return this.rapidTimer > 0; }
@@ -81,6 +82,7 @@ class Player {
     if (this.rapidTimer > 0) this.rapidTimer -= dt;
     if (this.spreadTimer > 0) this.spreadTimer -= dt;
     if (this.fireTimer > 0) this.fireTimer -= dt;
+    if (this.recoil > 0) this.recoil = Utils.lerp(this.recoil, 0, 0.35 * k);
 
     // --- firing ---
     this.firePose = 'idle';
@@ -119,6 +121,7 @@ class Player {
       this.game.spawnBullet(muzzleX, muzzleY, 0, -speed, { friendly: true, color: col, damage: dmg });
     }
     this.firePose = 'fire';
+    this.recoil = 5;
     this.game.particles.muzzle(muzzleX, muzzleY, this.rapid ? CONFIG.colors.accent : CONFIG.colors.gold);
     Sound.shoot();
   }
@@ -127,11 +130,12 @@ class Player {
   takeHit() {
     if (this.invuln > 0 || !this.alive) return true;
     this.game.bossHitless = false;   // breaks the "Untouchable" boss streak
+    const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
     if (this.shield > 0) {
       this.shield--;
       this.invuln = 600;
-      this.game.particles.explosion(this.x + this.width / 2, this.y + this.height / 2,
-        CONFIG.colors.accent2, 18);
+      this.game.particles.explosion(cx, cy, CONFIG.colors.accent2, 18);
+      this.game.particles.shockwave(cx, cy, CONFIG.colors.accent2, { r0: this.width * 0.4, r1: this.width * 0.95, life: 320 });
       this.game.shake(8, 200);
       Sound.hit();
       return true;
@@ -139,13 +143,16 @@ class Player {
     this.lives--;
     this.invuln = this.cfg.invulnTime;
     this.energy = this.maxEnergy; // small mercy: refill beam on death
-    this.game.particles.explosion(this.x + this.width / 2, this.y + this.height / 2,
-      CONFIG.colors.danger, 30, 1.4);
+    this.game.particles.explosionBig(cx, cy, CONFIG.colors.danger, 'crimson', 1.4);
     this.game.shake(16, 360);
+    this.game.freeze(55);
     Sound.playerHit();
     if (this.lives <= 0) {
       this.alive = false;
-      this.game.particles.explosion(this.x + this.width / 2, this.y + this.height / 2, '#fff', 40, 1.8);
+      this.game.particles.explosionBig(cx, cy, '#fff', 'fire', 2);
+      this.game.shake(22, 480);
+      this.game.freeze(110);
+      this.game.punchZoom(0.04);
     }
     return false;
   }
@@ -170,6 +177,30 @@ class Player {
     // Blink during invulnerability.
     if (this.invuln > 0 && Math.floor(this.invuln / 80) % 2 === 0) return;
 
+    // Engine exhaust flames (additive, flickering) — the ship is always under
+    // thrust, so two tapered jets glow beneath the nozzles. Bloom grabs these.
+    {
+      const fy = this.y + this.height - 12 + this.recoil;
+      const flick = 0.7 + 0.3 * Math.sin(Date.now() / 45);
+      const len = (16 + 12 * flick) * (1 + Math.abs(this.bankVel) * 0.35);
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      for (const fx of [this.x + this.width * 0.34, this.x + this.width * 0.66]) {
+        const g = c.createLinearGradient(fx, fy, fx, fy + len);
+        g.addColorStop(0, 'rgba(190,242,255,0.9)');
+        g.addColorStop(0.5, 'rgba(80,200,255,0.45)');
+        g.addColorStop(1, 'rgba(70,120,255,0)');
+        c.fillStyle = g;
+        c.beginPath();
+        c.moveTo(fx - 6 * flick, fy);
+        c.lineTo(fx + 6 * flick, fy);
+        c.lineTo(fx, fy + len);
+        c.closePath();
+        c.fill();
+      }
+      c.restore();
+    }
+
     const sw = CONFIG.sprites.player.frameW;
     const sh = CONFIG.sprites.player.frameH;
     let frame = 0;
@@ -177,16 +208,17 @@ class Player {
     else if (this.firePose === 'beam') frame = 3;
 
     c.save();
-    // subtle bank tilt based on movement
+    // subtle bank tilt based on movement + a brief firing kick-back
     const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
+    const dy = this.recoil;
     c.translate(cx, cy);
     c.rotate(this.bankVel * 0.12);
     c.translate(-cx, -cy);
 
     if (this.jets && this.jets.complete)
-      c.drawImage(this.jets, this.jetFrame * sw, 0, sw, sh, this.x, this.y, this.width, this.height);
+      c.drawImage(this.jets, this.jetFrame * sw, 0, sw, sh, this.x, this.y + dy, this.width, this.height);
     if (this.image && this.image.complete)
-      c.drawImage(this.image, frame * sw, 0, sw, sh, this.x, this.y, this.width, this.height);
+      c.drawImage(this.image, frame * sw, 0, sw, sh, this.x, this.y + dy, this.width, this.height);
     c.restore();
 
     // shield bubble

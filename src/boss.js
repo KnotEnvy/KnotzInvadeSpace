@@ -129,6 +129,12 @@ class Boss {
           this.x + Utils.rand(0, this.width), this.y + Utils.rand(0, this.height),
           Utils.pick([this.def.color, CONFIG.colors.gold, '#fff']), 14, 1.2);
       }
+      if (Utils.chance(0.2))
+        this.game.particles.spriteBurst(this.x + Utils.rand(0, this.width), this.y + Utils.rand(0, this.height),
+          this.mini ? 'energy' : 'fire', Utils.rand(80, 150));
+      if (Utils.chance(0.25))
+        this.game.particles.shockwave(this.x + Utils.rand(0, this.width), this.y + Utils.rand(0, this.height),
+          this.def.color, { r0: 6, r1: Utils.rand(60, 120), life: 360 });
       if (this.deathTimer <= 0) this.finishDeath();
       return;
     }
@@ -180,6 +186,11 @@ class Boss {
   }
 
   attack() {
+    // muzzle telegraph — a bright flash + sparks as the volley leaves (purely
+    // cosmetic; bullet spawn timing is unchanged).
+    const mx = this.x + this.width / 2, my = this.y + this.height - 18 * this.scale;
+    this.game.particles.emit(mx, my, { vx: 0, vy: 1, life: 130, size: 16 * this.scale, color: this.def.color, glow: 26, drag: 0.82 });
+    if (Meta.fx()) this.game.particles.sparks(mx, my, this.def.color, Math.PI / 2, 6);
     for (const step of this.def.phases[this.phase - 1]) this.runStep(step);
     Sound.enemyShoot();
   }
@@ -254,14 +265,21 @@ class Boss {
     this.vulnerable = false;
     this.deathTimer = this.mini ? 800 : 1400;
     this.game.shake(this.mini ? 12 : 20, this.mini ? 400 : 600);
+    this.game.freeze(this.mini ? 70 : 120);
+    if (!this.mini) this.game.punchZoom(0.045);
     Sound.bigExplode();
   }
 
   finishDeath() {
     this.alive = false;
     const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
-    this.game.particles.explosion(cx, cy, '#fff', this.mini ? 36 : 60, this.mini ? 1.8 : 2.4);
+    const theme = this.mini ? 'energy' : 'fire';
+    this.game.particles.explosionBig(cx, cy, '#fff', theme, this.mini ? 1.8 : 2.6);
     this.game.particles.explosion(cx, cy, this.def.color, this.mini ? 24 : 40, 2);
+    this.game.particles.spriteBurst(cx, cy, theme, this.mini ? 200 : 340);
+    this.game.particles.shockwave(cx, cy, this.def.color, { r0: 10, r1: this.mini ? 160 : 300, life: 520, lw: 5 });
+    this.game.particles.shockwave(cx, cy, '#fff', { r0: 4, r1: this.mini ? 110 : 210, life: 420, lw: 3 });
+    if (!this.mini) this.game.freeze(90);
     this.game.onBossDefeated(this);
   }
 

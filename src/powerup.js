@@ -22,6 +22,8 @@ class PowerUp {
     this.vy = CONFIG.powerup.fallSpeed;
     this.spin = 0;
     this.bob = Math.random() * Math.PI * 2;
+    this.pulse = Math.random() * Math.PI * 2;
+    this.hist = [];
     this.free = false;
   }
   update(dt) {
@@ -30,6 +32,11 @@ class PowerUp {
     this.y += this.vy * k;
     this.spin += 0.04 * k;
     this.bob += 0.1 * k;
+    this.pulse += 0.12 * k;
+    if (Meta.trailsOn()) {
+      this.hist.unshift({ x: this.x + this.width / 2, y: this.y + this.height / 2 });
+      if (this.hist.length > 6) this.hist.pop();
+    }
     if (this.y > CONFIG.HEIGHT + 40) this.free = true;
   }
   draw(c) {
@@ -40,6 +47,27 @@ class PowerUp {
     const r = this.width / 2;
     c.save();
     c.globalCompositeOperation = 'lighter';
+    // soft falling trail
+    for (let i = 1; i < this.hist.length; i++) {
+      const t = 1 - i / this.hist.length;
+      c.globalAlpha = t * 0.32;
+      c.fillStyle = def.color;
+      c.beginPath();
+      c.arc(this.hist[i].x, this.hist[i].y, r * 0.5 * t, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+    // pulsing halo
+    const hp = 0.55 + 0.45 * Math.sin(this.pulse);
+    const halo = c.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * (1.5 + 0.4 * hp));
+    halo.addColorStop(0, def.color);
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    c.globalAlpha = 0.4 + 0.3 * hp;
+    c.fillStyle = halo;
+    c.beginPath();
+    c.arc(cx, cy, r * (1.9 + 0.4 * hp), 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 1;
     c.shadowColor = def.color;
     c.shadowBlur = 18;
     // rotating diamond capsule

@@ -41,6 +41,13 @@ class Asteroid {
     this.cy += this.vy * k;
     this.rot += this.spin * k;
     if (this.hitFlash > 0) this.hitFlash -= dt;
+    // faint dust drifting off the rock (high tier only)
+    if (Meta.extras() && !Meta.reducedMotion() && Utils.chance(0.12 * k)) {
+      this.game.particles.emit(this.cx + Utils.rand(-this.r * 0.4, this.r * 0.4), this.cy - this.r * 0.4, {
+        vx: Utils.rand(-0.3, 0.3), vy: Utils.rand(-0.8, -0.2), life: Utils.rand(200, 420),
+        size: Utils.rand(1, 2.2), color: '#8a7c68', glow: 3, drag: 0.96,
+      });
+    }
     if (this.cy - this.r > CONFIG.HEIGHT + 30) this.dead = true;
     // wrap horizontally
     if (this.cx < -this.r - 40) this.cx = CONFIG.WIDTH + this.r + 38;
@@ -103,6 +110,20 @@ class Asteroid {
       c.arc((i - 1) * this.r * 0.32, ((i % 2) - 0.5) * this.r * 0.45, this.r * 0.12, 0, Math.PI * 2);
       c.fill();
     }
+    // rim light — a soft specular toward the upper-left light source
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = 0.28;
+    c.fillStyle = '#efe6d4';
+    c.beginPath();
+    c.arc(-this.r * 0.32, -this.r * 0.36, this.r * 0.2, 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 0.18;
+    c.lineWidth = 1.5;
+    c.strokeStyle = '#d8cab2';
+    this._path(c);
+    c.stroke();
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
     if (this.hitFlash > 0) {
       c.globalAlpha = (this.hitFlash / 80) * 0.7;
       c.globalCompositeOperation = 'lighter';

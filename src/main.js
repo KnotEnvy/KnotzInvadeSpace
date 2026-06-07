@@ -52,19 +52,46 @@ function boot() {
   // --- loading screen ---
   let progress = 0;
   let game = null;
+  // a few drifting stars so the loader isn't a dead screen
+  const loadStars = Array.from({ length: 60 }, () => ({
+    x: Math.random() * CONFIG.WIDTH, y: Math.random() * CONFIG.HEIGHT,
+    r: Math.random() * 1.6 + 0.4, s: Math.random() * 0.5 + 0.15, tw: Math.random() * 6.28,
+  }));
   function loadingFrame() {
-    ctx.fillStyle = '#05060f';
+    const g = ctx.createRadialGradient(CONFIG.WIDTH / 2, CONFIG.HEIGHT * 0.42, 60, CONFIG.WIDTH / 2, CONFIG.HEIGHT * 0.42, CONFIG.HEIGHT * 0.7);
+    g.addColorStop(0, '#0c1230'); g.addColorStop(1, '#05060f');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    const now = performance.now();
+    ctx.save();
+    ctx.fillStyle = '#bfe9ff';
+    for (const st of loadStars) {
+      st.y += st.s; if (st.y > CONFIG.HEIGHT) { st.y = 0; st.x = Math.random() * CONFIG.WIDTH; }
+      ctx.globalAlpha = 0.4 + 0.5 * Math.abs(Math.sin(st.tw + now / 700));
+      ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    const titleGlow = 14 + 10 * (0.5 + 0.5 * Math.sin(now / 400));
     Utils.text(ctx, 'KNOTZ: INVADE SPACE', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 - 40,
-      { size: 34, color: '#fff', align: 'center', glow: 16, glowColor: CONFIG.colors.accent });
+      { size: 34, color: '#fff', align: 'center', glow: titleGlow, glowColor: CONFIG.colors.accent });
     const bw = 360, bx = (CONFIG.WIDTH - bw) / 2, by = CONFIG.HEIGHT / 2;
     ctx.strokeStyle = 'rgba(70,224,255,0.6)';
     ctx.lineWidth = 2;
     Utils.roundRect(ctx, bx, by, bw, 16, 8); ctx.stroke();
+    ctx.save();
     ctx.fillStyle = CONFIG.colors.accent;
     ctx.shadowColor = CONFIG.colors.accent; ctx.shadowBlur = 12;
     Utils.roundRect(ctx, bx + 2, by + 2, (bw - 4) * progress, 12, 6); ctx.fill();
-    ctx.shadowBlur = 0;
+    // travelling shimmer on the fill
+    if (progress > 0.04) {
+      Utils.roundRect(ctx, bx + 2, by + 2, (bw - 4) * progress, 12, 6); ctx.clip();
+      const sx = bx + ((now / 4) % (bw + 60)) - 30;
+      const sg = ctx.createLinearGradient(sx - 26, 0, sx + 26, 0);
+      sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.7)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = sg;
+      ctx.fillRect(sx - 26, by, 52, 16);
+    }
+    ctx.restore();
     Utils.text(ctx, 'LOADING ' + Math.round(progress * 100) + '%', CONFIG.WIDTH / 2, by + 48,
       { size: 14, color: '#9fb3d1', align: 'center' });
     if (!game) requestAnimationFrame(loadingFrame);

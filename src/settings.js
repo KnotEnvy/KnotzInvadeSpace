@@ -23,6 +23,7 @@ class SettingsMenu {
       { key: 'sfx',           type: 'slider', label: 'SFX VOLUME' },
       { key: 'shake',         type: 'toggle', label: 'SCREEN SHAKE' },
       { key: 'reducedMotion', type: 'toggle', label: 'REDUCED MOTION' },
+      { key: 'quality',       type: 'cycle',  label: 'GRAPHICS', options: ['low', 'medium', 'high'] },
       { key: 'difficulty',    type: 'cycle',  label: 'DIFFICULTY', options: ['easy', 'normal', 'hard'] },
       { key: 'touchControls', type: 'cycle',  label: 'TOUCH CONTROLS', options: ['auto', 'on', 'off'] },
       { type: 'back', label: '◀  BACK' },
@@ -97,7 +98,7 @@ class SettingsMenu {
 
     const cx = CONFIG.WIDTH / 2;
     Utils.text(c, 'SETTINGS', cx, 120, { size: 56, color: '#fff', align: 'center', glow: 18, glowColor: CONFIG.colors.accent });
-    Utils.text(c, 'TUNE AUDIO, MOTION & DIFFICULTY', cx, 150, { size: 12, color: '#9fb3d1', align: 'center' });
+    Utils.text(c, 'TUNE AUDIO, VISUALS, MOTION & DIFFICULTY', cx, 150, { size: 12, color: '#9fb3d1', align: 'center' });
 
     this.items.forEach((item, i) => this._row(c, item, i));
 

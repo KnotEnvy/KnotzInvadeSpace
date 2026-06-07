@@ -65,6 +65,14 @@ class MetaProfile {
   }
   shakeEnabled()  { return this.data.settings.shake !== false && !this.reducedMotion(); }
   reducedMotion() { return !!this.data.settings.reducedMotion; }
+  // Graphics tier ('low'|'medium'|'high'); falls back to 'high' if invalid.
+  quality()       { const q = this.data.settings.quality; return (CONFIG.quality && CONFIG.quality[q]) ? q : 'high'; }
+  qualityMods()   { return CONFIG.quality[this.quality()] || CONFIG.quality.high; }
+  // Mid-tier juice (med+high): hit-stop, shockwaves, textured explosions, orb
+  // bullets, combo glow. extras() = high-only flourishes (ribbons, grade, ...).
+  fx()            { return !!this.qualityMods().fx; }
+  extras()        { return !!this.qualityMods().extras; }
+  trailsOn()      { return !!this.qualityMods().trails; }
   difficulty()    { return this.data.settings.difficulty || 'normal'; }
   diffMods()      { return CONFIG.difficulty[this.difficulty()] || CONFIG.difficulty.normal; }
 

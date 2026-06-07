@@ -52,6 +52,77 @@ class Particle {
   }
 }
 
+// Expanding additive ring — the classic "shockwave" punch on big impacts.
+class Shockwave {
+  constructor() { this.dead = true; }
+  spawn(x, y, opt) {
+    this.x = x; this.y = y;
+    this.r0 = opt.r0 != null ? opt.r0 : 4;
+    this.r1 = opt.r1 != null ? opt.r1 : 90;
+    this.life = opt.life || 360; this.maxLife = this.life;
+    this.color = opt.color || '#fff';
+    this.lw = opt.lw != null ? opt.lw : 3;
+    this.dead = false;
+  }
+  update(dt) { this.life -= dt; if (this.life <= 0) this.dead = true; }
+  draw(c) {
+    const t = Utils.clamp(1 - this.life / this.maxLife, 0, 1);
+    const r = Utils.lerp(this.r0, this.r1, Utils.easeOutCubic(t));
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = (1 - t) * 0.9;
+    c.strokeStyle = this.color;
+    c.lineWidth = this.lw * (1 - t) + 0.6;
+    c.shadowColor = this.color;
+    c.shadowBlur = 14;
+    c.beginPath();
+    c.arc(this.x, this.y, Math.max(0.5, r), 0, Math.PI * 2);
+    c.stroke();
+    c.restore();
+  }
+}
+
+// A high-res textured explosion that plays a frame sequence from a sprite
+// sheet (we reuse the unused VFX columns baked into boss.png). Drawn
+// additively, it layers over the particle burst for a meatier blast.
+class SpriteBurst {
+  constructor() { this.dead = true; }
+  spawn(x, y, opt) {
+    this.x = x; this.y = y;
+    this.image = opt.image;
+    this.frames = opt.frames;          // [{sx,sy,sw,sh}, ...]
+    this.size = opt.size || 120;
+    this.life = opt.life || 460; this.maxLife = this.life;
+    this.rot = opt.rot || 0;
+    this.dead = !this.image || !this.frames || !this.frames.length;
+  }
+  update(dt) { this.life -= dt; if (this.life <= 0) this.dead = true; }
+  draw(c) {
+    if (!this.image || !this.image.complete) return;
+    const t = Utils.clamp(1 - this.life / this.maxLife, 0, 1);
+    const idx = Utils.clamp(Math.floor(t * this.frames.length), 0, this.frames.length - 1);
+    const f = this.frames[idx];
+    const sz = this.size * (0.7 + 0.45 * t);     // bloom outward as it plays
+    const a = t < 0.15 ? t / 0.15 : (1 - t) / 0.85;
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = Utils.clamp(a, 0, 1);
+    c.translate(this.x, this.y);
+    c.rotate(this.rot);
+    c.drawImage(this.image, f.sx, f.sy, f.sw, f.sh, -sz / 2, -sz / 2, sz, sz);
+    c.restore();
+  }
+}
+
+// VFX frame tables — the unused orb→burst→fade columns (6–10) of boss.png,
+// one themed sequence per sheet row. See the sheet analysis in the GFX pass.
+const VFX_THEMES = { gold: 0, energy: 1, crimson: 2, fire: 3 };
+function bossVfxFrames(theme) {
+  const row = VFX_THEMES[theme] != null ? VFX_THEMES[theme] : 3;
+  const y = row * 200;
+  return [1200, 1400, 1600, 1800, 2000].map(x => ({ sx: x, sy: y, sw: 200, sh: 200 }));
+}
+
 // Floating "+score" / combo text that drifts up and fades.
 class Popup {
   constructor() { this.dead = true; }
@@ -71,8 +142,12 @@ class Popup {
 
 class Particles {
   constructor() {
-    this.pool = Array.from({ length: 600 }, () => new Particle());
+    // Pool sized for the High tier; lower tiers simply emit fewer (see _count).
+    const cap = (CONFIG.quality && CONFIG.quality.high.maxParticles) || 600;
+    this.pool = Array.from({ length: cap }, () => new Particle());
     this.popups = Array.from({ length: 40 }, () => new Popup());
+    this.shockwaves = Array.from({ length: 24 }, () => new Shockwave());
+    this.bursts = Array.from({ length: 24 }, () => new SpriteBurst());
   }
   _get() {
     for (const p of this.pool) if (p.dead) return p;
@@ -83,12 +158,20 @@ class Particles {
     for (const p of this.popups) if (p.dead) return p;
     return this.popups[0];
   }
+  _getShock() { for (const s of this.shockwaves) if (s.dead) return s; return this.shockwaves[0]; }
+  _getBurst() { for (const b of this.bursts) if (b.dead) return b; return this.bursts[0]; }
 
   emit(x, y, opt) { this._get().spawn(x, y, opt); }
 
-  // Reduced-motion (accessibility) thins emitter counts so the screen is
-  // calmer; popups/score text are always kept for readability.
-  _count(n) { return Meta.reducedMotion() ? Math.max(1, Math.round(n * 0.3)) : n; }
+  // Scale emitter counts by the accessibility (reduced-motion) and graphics
+  // (quality tier) settings, which compose. Popups/score text always survive.
+  _count(n) {
+    let m = 1;
+    if (Meta.reducedMotion()) m *= 0.3;
+    const q = CONFIG.quality && CONFIG.quality[Meta.quality()];
+    if (q && q.particleMul != null) m *= q.particleMul;
+    return Math.max(1, Math.round(n * m));
+  }
 
   popup(x, y, text, color = '#fff', size = 22) {
     this._getPopup().spawn(x, y, text, color, size);
@@ -139,19 +222,52 @@ class Particles {
     });
   }
 
+  // Expanding ring punch (fx tier only — keeps Low ≈ baseline; the expanding
+  // motion is suppressed under reduced-motion for accessibility).
+  shockwave(x, y, color = '#fff', opt = {}) {
+    if (!Meta.fx() || Meta.reducedMotion()) return;
+    this._getShock().spawn(x, y, { color, ...opt });
+  }
+
+  // High-res textured explosion frames from boss.png (fx tier; the flashing
+  // burst is suppressed under reduced-motion).
+  spriteBurst(x, y, theme = 'fire', size = 140, rot = null) {
+    if (!Meta.fx() || Meta.reducedMotion()) return;
+    const img = (typeof Assets !== 'undefined') && Assets.img && Assets.img.boss;
+    if (!img) return;
+    this._getBurst().spawn(x, y, {
+      image: img, frames: bossVfxFrames(theme), size,
+      rot: rot == null ? Utils.rand(0, Math.PI * 2) : rot,
+      life: 420 + size,
+    });
+  }
+
+  // A meatier blast: particle burst + shockwave ring + textured sprite flash.
+  explosionBig(x, y, color, theme = 'fire', power = 1.6) {
+    this.explosion(x, y, color, Math.round(30 * power), power);
+    this.shockwave(x, y, color, { r0: 6 * power, r1: 70 * power, life: 360 + 120 * power, lw: 3 + power });
+    this.spriteBurst(x, y, theme, 130 * power);
+  }
+
   update(dt) {
     for (const p of this.pool) if (!p.dead) p.update(dt);
     for (const p of this.popups) if (!p.dead) p.update(dt);
+    for (const s of this.shockwaves) if (!s.dead) s.update(dt);
+    for (const b of this.bursts) if (!b.dead) b.update(dt);
   }
   draw(c) {
     c.save();
     c.globalCompositeOperation = 'lighter';
     for (const p of this.pool) if (!p.dead) p.draw(c);
     c.restore();
+    for (const s of this.shockwaves) if (!s.dead) s.draw(c);
+    for (const b of this.bursts) if (!b.dead) b.draw(c);
     for (const p of this.popups) if (!p.dead) p.draw(c);
   }
   clear() {
     for (const p of this.pool) p.dead = true;
     for (const p of this.popups) p.dead = true;
+    for (const s of this.shockwaves) s.dead = true;
+    for (const b of this.bursts) b.dead = true;
   }
 }

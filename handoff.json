@@ -14,7 +14,7 @@
   },
 
   "status": {
-    "summary": "Content-complete roguelite. Six build phases shipped. No known runtime errors (validated headlessly across all states + modes).",
+    "summary": "Content-complete roguelite WITH the AAA visual & juice pass shipped (phase 9). No known runtime errors (validated headlessly across all states + modes + graphics tiers). Bloom + heavy FX scale via the Graphics Quality setting; Low tier matches the pre-pass baseline; all effects respect reduced-motion / screen-shake accessibility toggles.",
     "phasesCompleted": [
       { "phase": 1, "date": "2026-06-01", "title": "Modern arcade rebuild", "delivered": "Modular vanilla-JS engine: juice (shake/particles/hit-flash/trails/combos), Galaga dive AI, energy beam, 6 power-ups, multi-phase boss every 5th wave, endless background progression, synthesized Web Audio SFX+music, keyboard+touch, responsive canvas, localStorage hi-score, menu/pause/game-over." },
       { "phase": 2, "date": "2026-06-02", "title": "Roguelite meta + content", "delivered": "Persistent profile + Hangar shop (7 upgrades), new enemies (Stinger, Splitter) + elite modifier, Combat Drone, Magnet, twin Auto-Cannons, Aegis shield, splitting asteroid hazards, credit payouts." },
@@ -23,9 +23,10 @@
       { "phase": 5, "date": "2026-06-04", "title": "Achievements + Daily Challenge", "delivered": "achievements.js (14 unlockables, toasts, viewer) + daily.js (date-seeded run with 2 random modifiers; deterministic formations; per-day best). Mulberry32 PRNG in utils.js." },
       { "phase": 6, "date": "2026-06-04", "title": "Game modes + Campaign victory", "delivered": "CONFIG.modes (campaign/endless/daily). Campaign ends in a VICTORY screen after winBosses bosses (Earth finale background). Menu rebuilt with clickable mode chips + LAUNCH + Hangar/Settings/Awards buttons." },
       { "phase": 7, "date": "2026-06-04", "title": "Mobile on-screen controls", "delivered": "Rewrote input.js for multi-touch; on-screen ◀ ▶ / FIRE / BEAM buttons (UI.drawTouchControls). 'touchControls' setting: auto/on/off." },
-      { "phase": 8, "date": "2026-06-04", "title": "Economy & difficulty balance pass", "delivered": "Credit payout nudged up (perScore .015, perBoss 75); added CONFIG.wave.maxSpeed cap for fair deep waves. Remaining balance is data in CONFIG for playtesters." }
+      { "phase": 8, "date": "2026-06-04", "title": "Economy & difficulty balance pass", "delivered": "Credit payout nudged up (perScore .015, perBoss 75); added CONFIG.wave.maxSpeed cap for fair deep waves. Remaining balance is data in CONFIG for playtesters." },
+      { "phase": 9, "date": "2026-06-05", "title": "AAA visual & juice pass", "delivered": "NEW src/postfx.js: offscreen threshold-bloom post-processing (drawImage+ctx.filter only, never getImageData; feature-detected with a hard no-op fallback). Graphics Quality setting (low/medium/high) in CONFIG.quality + Meta.quality()/fx()/extras()/trailsOn() scales bloom + particle budgets. JUICE: hit-stop (Game.freeze — a real-time sim-skip counter, fixed-timestep untouched), zoom-punch (Game.punchZoom), expanding Shockwave + textured SpriteBurst emitters (reusing the unused VFX columns 6-10 of boss.png), orb enemy bullets, brighter player bolts, beam halo+muzzle flare, combo escalation glow, muzzle recoil. ENTITIES/ENV: enemy warp-in + idle breathing + dive trails, player engine flames, power-up halos/trails, drone/asteroid trails+rim, richer starfield (shooting stars, hero-star flares), in-game vignette. SCREENS: HUD score-rollup + energy shimmer + low-life pulse, animated banner sweep-in, menu hover states, polished loading screen, boss muzzle telegraphs. SET-PIECES: campaign victory-over-Earth finale (horizon glow + rolling fireworks), boss-death cinematic, per-sector colour grade. All gated by Meta.reducedMotion()/shakeEnabled() for accessibility; Low tier ≈ pre-pass baseline." }
     ],
-    "codeSize": { "srcFiles": 22, "srcLinesOfCode": 3759 }
+    "codeSize": { "srcFiles": 23, "srcLinesOfCode": 4498 }
   },
 
   "techStack": {
@@ -63,14 +64,15 @@
 
   "scriptLoadOrder": [
     "src/config.js", "src/utils.js", "src/audio.js", "src/input.js",
-    "src/particles.js", "src/starfield.js", "src/projectile.js", "src/powerup.js",
+    "src/particles.js", "src/postfx.js", "src/starfield.js", "src/projectile.js", "src/powerup.js",
     "src/meta.js", "src/achievements.js", "src/daily.js", "src/player.js",
     "src/enemy.js", "src/boss.js", "src/wave.js", "src/drone.js", "src/hazard.js",
     "src/ui.js", "src/hangar.js", "src/settings.js", "src/game.js", "src/main.js"
   ],
 
   "fileMap": {
-    "src/config.js": { "exports": "CONFIG (global)", "role": "All tunables: resolution, timestep, player/bullet/enemy/wave/boss stats, hazards, drone, credits, palette (CONFIG.colors), background list, sprite-sheet frame layouts, AND newer blocks: settings defaults, difficulty presets, modes, campaign, daily.modifiers, touch button layout, saveVersion, storageKey." },
+    "src/config.js": { "exports": "CONFIG (global)", "role": "All tunables: resolution, timestep, player/bullet/enemy/wave/boss stats, hazards, drone, credits, palette (CONFIG.colors), background list, sprite-sheet frame layouts, AND newer blocks: settings defaults (incl. quality), difficulty presets, CONFIG.quality graphics tiers (bloom/particleMul/trails/fx/extras), modes, campaign, daily.modifiers, touch button layout, saveVersion, storageKey." },
+    "src/postfx.js": { "exports": "PostFX (singleton)", "role": "Offscreen threshold-bloom post-processing. begin(ctx) returns the scene ctx (offscreen when bloom on, else the real ctx); end(ctx) bright-passes + blurs + composites additively, then UI draws crisp on top. drawImage + ctx.filter ONLY (never getImageData -> no file:// taint). Feature-detected once; no-ops if unsupported (covers old browsers + the Node-VM smoke harness). Quality params from Meta.quality()." },
     "src/utils.js": { "exports": "Utils", "role": "Math (clamp/lerp/rand/randInt/pick/chance/dist), Utils.aabb, easing, commas, Utils.text + Utils.roundRect canvas helpers, and Utils.makeRng (mulberry32) + Utils.hashStr (seed the Daily)." },
     "src/audio.js": { "exports": "AudioEngine, Sound (singleton)", "role": "Synthesized SFX + procedural music. setMuted + setVolumes({master,music,sfx}) layered over base bus levels via _applyVolumes(); safe to call before init()." },
     "src/input.js": { "exports": "Input", "role": "Unified keyboard + MULTI-touch + mouse. touches Map; high-level intents left/right/fire/beam (keys + on-screen buttons); buttonRect/_touchOn/buttonsActive for the touch overlay; wasPressed/consumePressed for menus. Maps client coords to the 720x960 design space." },
@@ -95,6 +97,7 @@
   },
 
   "forTheVisualsTeam": {
+    "statusNote": "DELIVERED in phase 9 (2026-06-05). The AAA visual & juice pass is in: src/postfx.js (offscreen bloom), the Graphics Quality setting (CONFIG.quality + Meta.quality/fx/extras/trailsOn), Particles.Shockwave/SpriteBurst emitters, Game.freeze/punchZoom (hit-stop + zoom), and effects woven through every entity's draw(). The sprites were KEPT and elevated (the unused VFX columns of boss.png are now used by SpriteBurst). Constraints below were all honoured. This section is retained for the NEXT iteration (e.g. higher-res sheets, WebGL).",
     "mission": "Replace/augment the programmer-art rendering with AAA visuals WITHOUT changing gameplay timing or the file:// no-build constraint. Most draw code is isolated in *.draw(c) methods using a single Canvas 2D context.",
     "noBuildConstraint": "Keep classic <script> tags (no ES modules / no fetch) so index.html still runs by double-click. If you need a build pipeline or asset loading via fetch, you must add a static server and update howToRun + main.js loadAssets.",
     "whereRenderingLives": {

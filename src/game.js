@@ -5,6 +5,15 @@
  * shake, and the meta-progression hooks (credits via the Meta profile).
  * ===================================================================== */
 
+// Subtle per-sector colour grade (high tier only) — a translucent mood wash
+// keyed to the active backdrop so each sector feels distinct.
+const SECTOR_TINTS = [
+  'rgba(40,80,165,0.10)',   'rgba(120,60,165,0.10)', 'rgba(165,95,45,0.10)',
+  'rgba(40,150,125,0.10)',  'rgba(155,45,75,0.10)',  'rgba(55,105,185,0.10)',
+  'rgba(120,140,45,0.10)',  'rgba(95,45,155,0.10)',  'rgba(40,130,160,0.12)',
+  'rgba(150,70,125,0.10)',
+];
+
 class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -61,6 +70,8 @@ class Game {
     this.gameOverPending = false;
     this.deathTimer = 0;
     this.creditsEarned = 0;
+    this.freezeTimer = 0;   // hit-stop (real-time; skips sim steps, see update)
+    this.punch = 0;         // brief zoom-in punch on big impacts
   }
 
   _tempo() { return Math.min(1.6, 1 + this.level * 0.06); }
@@ -284,8 +295,14 @@ class Game {
   }
 
   smartBomb() {
-    this.shake(18, 400);
-    this.particles.explosion(CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2, '#fff', 50, 2.2);
+    const cx = CONFIG.WIDTH / 2, cy = CONFIG.HEIGHT / 2;
+    this.shake(20, 450);
+    this.freeze(90);
+    this.punchZoom(0.05);
+    this.particles.explosionBig(cx, cy, '#fff', 'gold', 2.4);
+    this.particles.spriteBurst(cx, cy, 'gold', 360);
+    this.particles.shockwave(cx, cy, CONFIG.colors.gold, { r0: 20, r1: CONFIG.WIDTH * 0.9, life: 640, lw: 6 });
+    this.particles.shockwave(cx, cy, '#fff', { r0: 8, r1: CONFIG.WIDTH * 0.6, life: 470, lw: 3 });
     Sound.bigExplode();
     this.enemyBullets.forEach(b => b.free = true);
     for (const wave of this.waves)
@@ -360,8 +377,33 @@ class Game {
     this.shakeDur = Math.max(this.shakeDur, dur);
   }
 
+  // Brief time-freeze (hit-stop) on big impacts. A real-time counter that
+  // skips advancing the SIM for a few frames — the fixed-timestep contract is
+  // untouched (update is still called with STEP_MS every frame). Gated like
+  // shake so reduced-motion / Low tier stay smooth.
+  freeze(ms) {
+    if (!Meta.shakeEnabled() || !Meta.fx()) return;
+    this.freezeTimer = Math.min(140, Math.max(this.freezeTimer, ms));
+  }
+
+  // Short zoom-in punch around the arena centre (gated like shake).
+  punchZoom(a) {
+    if (!Meta.shakeEnabled() || !Meta.fx()) return;
+    this.punch = Math.max(this.punch, a);
+  }
+
   showBanner(title, sub, color) {
     this.banner = { title, sub, color, time: 0, duration: 1700 };
+  }
+
+  // Occasional firework bursts over the Earth finale on the victory screen.
+  _victoryFx() {
+    if (!Utils.chance(0.05)) return;
+    const x = Utils.rand(70, CONFIG.WIDTH - 70), y = Utils.rand(120, CONFIG.HEIGHT * 0.5);
+    const col = Utils.pick([CONFIG.colors.gold, CONFIG.colors.accent, CONFIG.colors.good, '#fff']);
+    this.particles.explosion(x, y, col, 26, 1.4);
+    this.particles.shockwave(x, y, col, { r0: 4, r1: 84, life: 520 });
+    this.particles.spriteBurst(x, y, Utils.pick(['gold', 'energy']), 120);
   }
 
   // --- main update --------------------------------------------------------
@@ -372,9 +414,16 @@ class Game {
     this.updateShake(dt);
     Ach.update(dt);
 
+    // Celebratory fireworks roll on while the campaign-victory screen is up.
+    if (this.state === 'gameover' && this.victory) this._victoryFx();
+
     if (this.state === 'hangar') this.hangar.update(dt);
     if (this.state === 'settings') this.settings.update(dt);
     if (this.state !== 'playing') return;
+
+    // Hit-stop: hold the simulation for a beat so big impacts land. Particles
+    // and screen-shake (updated above) keep animating during the freeze.
+    if (this.freezeTimer > 0) { this.freezeTimer -= dt; return; }
 
     this.player.update(dt);
     this.beam.update(dt);
@@ -478,6 +527,8 @@ class Game {
       this.shakeX = this.shakeY = 0;
       this.shakeMag = 0;
     }
+    if (this.punch > 0.0005) this.punch = Utils.lerp(this.punch, 0, Utils.clamp(0.12 * (dt / CONFIG.STEP_MS), 0, 1));
+    else this.punch = 0;
   }
 
   // --- input / state transitions -----------------------------------------
@@ -540,16 +591,36 @@ class Game {
 
   // --- rendering ----------------------------------------------------------
   draw(c) {
-    this.starfield.draw(c);
+    // The bloomable scene (starfield + world) is captured by PostFX into an
+    // offscreen buffer, post-processed, and composited back onto `c`. When
+    // bloom is off (Low tier / unsupported), `sc` IS `c` and this is a no-op.
+    const sc = PostFX.begin(c);
+    this.starfield.draw(sc);
 
     const worldVisible = this.state !== 'menu' && this.state !== 'hangar' &&
       this.state !== 'settings' && this.state !== 'achievements';
     if (worldVisible) {
-      c.save();
-      c.translate(this.shakeX, this.shakeY);
-      this.drawWorld(c);
-      c.restore();
+      sc.save();
+      if (this.punch > 0.0005) {
+        const z = 1 + this.punch;
+        sc.translate(CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2);
+        sc.scale(z, z);
+        sc.translate(-CONFIG.WIDTH / 2, -CONFIG.HEIGHT / 2);
+      }
+      sc.translate(this.shakeX, this.shakeY);
+      this.drawWorld(sc);
+      sc.restore();
+      // per-sector colour grade (drawn untransformed so shake can't reveal an
+      // ungraded edge; high tier only).
+      if (Meta.extras()) {
+        sc.save();
+        sc.fillStyle = SECTOR_TINTS[this.starfield.bgIndex % SECTOR_TINTS.length];
+        sc.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+        sc.restore();
+      }
     }
+    PostFX.end(c);   // composite scene + bloom; UI below draws crisp on `c`
+    if (worldVisible) this.ui.drawWorldVignette(c);
 
     if (this.state === 'menu') {
       this.ui.drawMenu(c);
@@ -564,11 +635,8 @@ class Game {
       if ((this.state === 'playing' || this.state === 'paused') && this.input.buttonsActive())
         this.ui.drawTouchControls(c, this.input);
       if (this.banner) {
-        const b = this.banner, d = b.duration;
-        let a = 1;
-        if (b.time < 300) a = b.time / 300;
-        else if (b.time > d - 450) a = Math.max(0, (d - b.time) / 450);
-        this.ui.drawBanner(c, b.title, b.sub, a, b.color);
+        const b = this.banner;
+        this.ui.drawBanner(c, b.title, b.sub, b.time, b.duration, b.color);
       }
       if (this.state === 'paused') this.ui.drawPause(c);
       if (this.state === 'gameover') this.ui.drawGameOver(c);

@@ -158,6 +158,24 @@ const CONFIG = {
     master: 1, music: 1, sfx: 1,
     shake: true, reducedMotion: false, difficulty: 'normal',
     touchControls: 'auto',   // 'auto' (show on touch devices) | 'on' | 'off'
+    quality: 'high',         // graphics tier: 'low' | 'medium' | 'high' (see CONFIG.quality)
+  },
+
+  // Graphics quality tiers. The render layer (post-processing bloom +
+  // particle budgets) scales per tier so the game stays smooth on weak
+  // devices while letting High go all-out. Read via Meta.quality().
+  //   bloom*       — offscreen threshold-bloom pass (see postfx.js)
+  //   particleMul  — multiplies emitter counts (composes with reduced-motion)
+  //   maxParticles — particle pool size (sized for the High tier)
+  //   trails       — long additive bullet/engine trails
+  //   fx           — the mid-tier juice layer: hit-stop, shockwaves, textured
+  //                  sprite explosions, orb bullets, combo glow (Meta.fx())
+  //   extras       — high-only flourishes: shooting stars, rim lights, the
+  //                  per-sector colour grade, engine ribbons (Meta.extras())
+  quality: {
+    low:    { bloom: false,                                                          particleMul: 0.6, maxParticles: 1200, trails: false, fx: false, extras: false },
+    medium: { bloom: true,  bloomScale: 0.125, blurPx: 2.5, blurPasses: 1, bloomStrength: 0.55, particleMul: 1.0, maxParticles: 1200, trails: true,  fx: true,  extras: false },
+    high:   { bloom: true,  bloomScale: 0.25,  blurPx: 3.5, blurPasses: 2, bloomStrength: 0.72, particleMul: 1.3, maxParticles: 1200, trails: true,  fx: true,  extras: true  },
   },
 
   // On-screen touch button layout (design-space rects, mirrored by Input + UI).

@@ -45,12 +45,30 @@ class Bullet {
       }
     }
     c.globalAlpha = 1;
-    c.shadowColor = this.color;
-    c.shadowBlur = 12;
-    c.fillStyle = '#fff';
-    c.fillRect(this.x, this.y, this.width, this.height);
-    c.fillStyle = this.color;
-    c.fillRect(this.x - 1, this.y + 2, this.width + 2, this.height - 4);
+
+    if (!this.friendly && Meta.fx()) {
+      // Enemy fire reads as a glowing energy orb (more menacing than a rect).
+      const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
+      const r = Math.max(this.width, this.height) * 0.62;
+      const g = c.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, '#fff');
+      g.addColorStop(0.35, this.color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.shadowColor = this.color;
+      c.shadowBlur = 14;
+      c.fillStyle = g;
+      c.beginPath();
+      c.arc(cx, cy, r, 0, Math.PI * 2);
+      c.fill();
+    } else {
+      // Player/enemy bolt: bright white core inside a coloured glow.
+      c.shadowColor = this.color;
+      c.shadowBlur = 14;
+      c.fillStyle = this.color;
+      c.fillRect(this.x - 1.5, this.y - 2, this.width + 3, this.height + 4);
+      c.fillStyle = '#fff';
+      c.fillRect(this.x + this.width * 0.18, this.y + 1, this.width * 0.64, this.height - 2);
+    }
     c.restore();
   }
 }
@@ -93,15 +111,34 @@ class Beam {
     for (const a of this.game.asteroids)
       if (!a.dead && Utils.aabb(beamBox, a)) a.hit(dmg);
     if (Utils.chance(0.5)) Sound.beam();
+
+    // muzzle crackle + sparks climbing the column (fx tier)
+    if (Meta.fx() && !Meta.reducedMotion()) {
+      const mx = p.x + p.width / 2;
+      if (Utils.chance(0.9)) this.game.particles.emit(mx + Utils.rand(-this.width, this.width), p.y,
+        { vx: Utils.rand(-1.2, 1.2), vy: Utils.rand(-3, -6), life: Utils.rand(160, 320),
+          size: Utils.rand(1.5, 3), color: '#bdf3ff', glow: 10, drag: 0.92 });
+    }
   }
   get color() { return CONFIG.colors.accent; }
   draw(c) {
     if (!this.active) return;
     const p = this.game.player;
-    const w = this.width * (0.85 + 0.15 * Math.sin(this.flicker));
-    const x = p.x + p.width / 2 - w / 2;
+    const pulse = 0.85 + 0.15 * Math.sin(this.flicker);
+    const w = this.width * pulse;
+    const cx = p.x + p.width / 2;
+    const x = cx - w / 2;
+    const top = 0, bottom = p.y + 10;
     c.save();
     c.globalCompositeOperation = 'lighter';
+    // soft outer halo
+    const halo = c.createLinearGradient(x - w, 0, x + w * 2, 0);
+    halo.addColorStop(0, 'rgba(70,224,255,0)');
+    halo.addColorStop(0.5, 'rgba(70,224,255,0.28)');
+    halo.addColorStop(1, 'rgba(70,224,255,0)');
+    c.fillStyle = halo;
+    c.fillRect(x - w, top, w * 3, bottom);
+    // main column
     const grad = c.createLinearGradient(x, 0, x + w, 0);
     grad.addColorStop(0, 'rgba(70,224,255,0)');
     grad.addColorStop(0.5, 'rgba(160,245,255,0.9)');
@@ -109,10 +146,20 @@ class Beam {
     c.fillStyle = grad;
     c.shadowColor = this.color;
     c.shadowBlur = 24;
-    c.fillRect(x, 0, w, p.y + 10);
+    c.fillRect(x, top, w, bottom);
     // bright core
-    c.fillStyle = 'rgba(255,255,255,0.85)';
-    c.fillRect(x + w * 0.4, 0, w * 0.2, p.y + 10);
+    c.fillStyle = 'rgba(255,255,255,0.9)';
+    c.fillRect(x + w * 0.4, top, w * 0.2, bottom);
+    // muzzle flare bloom at the ship
+    const fr = w * (1.4 + 0.4 * Math.sin(this.flicker * 1.7));
+    const mg = c.createRadialGradient(cx, p.y, 0, cx, p.y, fr);
+    mg.addColorStop(0, 'rgba(255,255,255,0.95)');
+    mg.addColorStop(0.4, 'rgba(160,245,255,0.7)');
+    mg.addColorStop(1, 'rgba(70,224,255,0)');
+    c.fillStyle = mg;
+    c.beginPath();
+    c.arc(cx, p.y, fr, 0, Math.PI * 2);
+    c.fill();
     c.restore();
   }
 }

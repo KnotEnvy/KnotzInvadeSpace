@@ -9,6 +9,13 @@ class UI {
     this.game = game;
     this.menuPulse = 0;
     this.starAngle = 0;
+    this.dispScore = 0;     // animated score read-out (rolls up to game.score)
+  }
+
+  // Is the mouse/touch pointer currently over this rect? (menu hover state)
+  _hover(r) {
+    const p = this.game.input.pointer;
+    return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   }
 
   // --- small reusable pieces ---------------------------------------------
@@ -52,13 +59,28 @@ class UI {
     c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
   }
 
+  // Subtler frame for live gameplay — focuses the eye without dimming the HUD.
+  drawWorldVignette(c) {
+    const g = c.createRadialGradient(
+      CONFIG.WIDTH / 2, CONFIG.HEIGHT * 0.5, CONFIG.HEIGHT * 0.36,
+      CONFIG.WIDTH / 2, CONFIG.HEIGHT * 0.5, CONFIG.HEIGHT * 0.74);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.34)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+  }
+
   // --- in-game HUD --------------------------------------------------------
   drawHUD(c) {
     const g = this.game;
 
-    // score + hi-score (top-left)
+    // score + hi-score (top-left) — the read-out rolls up toward the real score
+    if (g.score < this.dispScore) this.dispScore = g.score;        // snap on reset
+    else this.dispScore = Math.min(g.score, this.dispScore + Math.max(1, (g.score - this.dispScore) * 0.18));
+    const rolling = g.score - this.dispScore > 1;
     Utils.text(c, 'SCORE', 22, 30, { size: 12, color: '#9fb3d1', glow: 0 });
-    Utils.text(c, Utils.commas(g.score), 22, 56, { size: 26, color: '#fff', glow: 8 });
+    Utils.text(c, Utils.commas(this.dispScore), 22, 56,
+      { size: 26, color: '#fff', glow: rolling ? 16 : 8, glowColor: CONFIG.colors.gold });
     Utils.text(c, 'HI ' + Utils.commas(g.hiScore), 22, 78, { size: 12, color: CONFIG.colors.gold });
 
     // wave / level (top-right)
@@ -70,29 +92,50 @@ class UI {
     // boss bar overrides the top strip
     if (g.boss && g.boss.alive) g.boss.drawHealthBar(c);
 
-    // combo
+    // combo — the count grows and a screen-edge glow builds as it climbs
     if (g.combo > 1) {
       const t = Utils.clamp(g.comboTimer / CONFIG.combo.window, 0, 1);
+      const lvl = g.combo / CONFIG.combo.max;            // 0..1
+      const pulse = 0.85 + 0.15 * Math.sin(Date.now() / 110);
+      if (Meta.fx() && g.combo >= 4) {
+        const a = Utils.clamp((g.combo - 3) / (CONFIG.combo.max - 3), 0, 1) * 0.55 * pulse;
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        c.globalAlpha = a;
+        c.strokeStyle = CONFIG.colors.gold;
+        c.lineWidth = 6;
+        c.shadowColor = CONFIG.colors.gold;
+        c.shadowBlur = 42;
+        Utils.roundRect(c, 7, 7, CONFIG.WIDTH - 14, CONFIG.HEIGHT - 14, 16);
+        c.stroke();
+        c.restore();
+      }
       Utils.text(c, `x${g.combo}  COMBO`, CONFIG.WIDTH / 2, 96,
-        { size: 22, color: CONFIG.colors.gold, align: 'center', glow: 12 });
+        { size: 20 + 14 * lvl, color: CONFIG.colors.gold, align: 'center', glow: 10 + 14 * lvl });
       c.save();
       c.fillStyle = CONFIG.colors.gold;
       c.globalAlpha = 0.8;
-      c.fillRect(CONFIG.WIDTH / 2 - 60, 104, 120 * t, 3);
+      c.fillRect(CONFIG.WIDTH / 2 - 60, 108, 120 * t, 3);
       c.restore();
     }
 
     // --- bottom HUD strip ---
     const baseY = CONFIG.HEIGHT - 30;
 
-    // lives
+    // lives — the last life pulses red as a danger tell
+    const lowLife = g.player.alive && g.player.lives <= 1;
+    const lifePulse = 0.6 + 0.4 * Math.sin(Date.now() / 140);
     for (let i = 0; i < g.player.maxLives; i++) {
       const filled = i < g.player.lives;
-      this.shipIcon(c, 30 + i * 22, baseY, 1.1,
-        filled ? CONFIG.colors.accent : 'rgba(255,255,255,0.15)');
+      let col = filled ? CONFIG.colors.accent : 'rgba(255,255,255,0.15)';
+      if (filled && lowLife) col = CONFIG.colors.danger;
+      c.save();
+      if (filled && lowLife) c.globalAlpha = lifePulse;
+      this.shipIcon(c, 30 + i * 22, baseY, 1.1, col);
+      c.restore();
     }
 
-    // energy bar (bottom-right)
+    // energy bar (bottom-right) with a travelling shimmer
     const ew = 200, eh = 12, ex = CONFIG.WIDTH - ew - 24, ey = baseY - 6;
     c.save();
     Utils.roundRect(c, ex, ey, ew, eh, 6);
@@ -105,6 +148,19 @@ class UI {
     c.shadowColor = col;
     c.shadowBlur = 10;
     c.fill();
+    if (pct > 0.02 && !g.player.cooldown) {
+      // shimmer sweep
+      Utils.roundRect(c, ex, ey, ew * pct, eh, 6);
+      c.clip();
+      const sx = ex + ((Date.now() / 7) % (ew + 60)) - 30;
+      const sh = c.createLinearGradient(sx - 24, 0, sx + 24, 0);
+      sh.addColorStop(0, 'rgba(255,255,255,0)');
+      sh.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+      sh.addColorStop(1, 'rgba(255,255,255,0)');
+      c.globalCompositeOperation = 'lighter';
+      c.fillStyle = sh;
+      c.fillRect(sx - 24, ey, 48, eh);
+    }
     c.restore();
     Utils.text(c, 'BEAM', ex - 8, ey + 11, { size: 11, color: '#9fb3d1', align: 'right' });
 
@@ -152,14 +208,15 @@ class UI {
   // A small clickable button helper used across the menu. Pushes a hit-rect
   // into menuRects and returns it.
   _menuButton(c, x, y, w, h, label, kind, index, opt = {}) {
-    const hot = opt.selected;
+    const hover = this._hover({ x, y, w, h });
+    const hot = opt.selected || hover;
     c.save();
     Utils.roundRect(c, x, y, w, h, 10);
-    c.fillStyle = hot ? 'rgba(70,224,255,0.18)' : 'rgba(10,14,30,0.78)';
+    c.fillStyle = hot ? (hover && !opt.selected ? 'rgba(70,224,255,0.12)' : 'rgba(70,224,255,0.18)') : 'rgba(10,14,30,0.78)';
     c.fill();
     c.lineWidth = hot ? 2.5 : 1.5;
     c.strokeStyle = hot ? CONFIG.colors.accent : 'rgba(70,224,255,0.32)';
-    if (hot) { c.shadowColor = CONFIG.colors.accent; c.shadowBlur = 14; }
+    if (hot) { c.shadowColor = CONFIG.colors.accent; c.shadowBlur = hover ? 18 : 14; }
     c.stroke();
     c.restore();
     Utils.text(c, label, x + w / 2, y + h / 2 + (opt.size ? opt.size / 3 : 6),
@@ -259,12 +316,24 @@ class UI {
   }
 
   drawGameOver(c) {
+    const g = this.game;
     c.save();
-    c.fillStyle = 'rgba(4,6,16,0.78)';
-    c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    if (g.victory) {
+      // lighter wash so the Earth finale + fireworks show through
+      c.fillStyle = 'rgba(6,10,26,0.5)';
+      c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+      const hg = c.createLinearGradient(0, CONFIG.HEIGHT, 0, CONFIG.HEIGHT * 0.55);
+      hg.addColorStop(0, 'rgba(255,212,96,0.5)');
+      hg.addColorStop(1, 'rgba(255,212,96,0)');
+      c.globalCompositeOperation = 'lighter';
+      c.fillStyle = hg;
+      c.fillRect(0, CONFIG.HEIGHT * 0.55, CONFIG.WIDTH, CONFIG.HEIGHT * 0.45);
+    } else {
+      c.fillStyle = 'rgba(4,6,16,0.78)';
+      c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    }
     c.restore();
     const cx = CONFIG.WIDTH / 2;
-    const g = this.game;
     Utils.text(c, g.victory ? 'VICTORY' : 'GAME OVER', cx, 300, {
       size: 76, color: g.victory ? CONFIG.colors.gold : CONFIG.colors.danger,
       align: 'center', glow: 22,
@@ -312,16 +381,36 @@ class UI {
     });
   }
 
-  // Big banner shown at the start of a wave / when a boss appears.
-  drawBanner(c, title, sub, t, color) {
-    // t in [0,1]; fade in, hold, fade out handled by caller via alpha
+  // Big banner shown at the start of a wave / when a boss appears. Sweeps in
+  // with a scale-pop + slide and a glowing underline, then fades out.
+  drawBanner(c, title, sub, time, duration, color) {
     const cx = CONFIG.WIDTH / 2, cy = CONFIG.HEIGHT / 2 - 40;
-    const a = t;
-    Utils.text(c, title, cx, cy, {
-      size: 56, color: color || '#fff', align: 'center', glow: 20, alpha: a,
-    });
-    if (sub) Utils.text(c, sub, cx, cy + 40, {
-      size: 18, color: '#cfe6ff', align: 'center', alpha: a,
-    });
+    const col = color || '#fff';
+    let a = 1, sc = 1, slide = 0;
+    const outStart = duration - 450;
+    if (time < 320) {
+      const inT = Utils.easeOutCubic(Utils.clamp(time / 320, 0, 1));
+      a = inT; sc = 0.7 + 0.3 * inT; slide = (1 - inT) * -26;
+    } else if (time > outStart) {
+      a = Utils.clamp((duration - time) / 450, 0, 1);
+      sc = 1 + (1 - a) * 0.06;
+    }
+    // glowing underline that sweeps open
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = a;
+    c.fillStyle = col;
+    c.shadowColor = col;
+    c.shadowBlur = 16;
+    const lw = 200 * a * sc;
+    c.fillRect(cx - lw, cy + 18, lw * 2, 2.5);
+    c.restore();
+    // title + subtitle (scaled/slid)
+    c.save();
+    c.translate(cx, cy + slide);
+    c.scale(sc, sc);
+    Utils.text(c, title, 0, 0, { size: 56, color: col, align: 'center', glow: 20, alpha: a });
+    c.restore();
+    if (sub) Utils.text(c, sub, cx, cy + 40, { size: 18, color: '#cfe6ff', align: 'center', alpha: a });
   }
 }
