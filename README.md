@@ -10,6 +10,10 @@ at the end of every sector. Bank your earnings into permanent upgrades in the
 
 ![arcade](https://img.shields.io/badge/genre-arcade%20shooter-46e0ff) ![tech](https://img.shields.io/badge/built%20with-vanilla%20JS-ffd23f) ![deps](https://img.shields.io/badge/dependencies-none-3ff58b)
 
+### ▶️ [**Play it now in your browser →**](https://knotenvy.github.io/KnotzInvadeSpace/)
+
+No install, no sign-up. Runs on desktop and mobile.
+
 ## ✨ Features
 
 - **Roguelite meta-progression** — earn **credits** every run and spend them in the
@@ -37,6 +41,9 @@ at the end of every sector. Bank your earnings into permanent upgrades in the
 - **Parallax starfields** drifting over your space background art.
 - **Procedural audio** — every sound effect and the background music are
   synthesized at runtime with the Web Audio API (no audio files needed).
+- **Scalable visuals** — offscreen threshold **bloom**, hit-stop, zoom-punch and
+  textured explosions, with **Low / Medium / High** graphics tiers (and
+  reduced-motion + screen-shake toggles) so it stays smooth on weak hardware.
 - **Plays everywhere** — keyboard *and* mouse/touch controls; the canvas scales
   to fit any screen. High score is saved locally.
 
@@ -76,7 +83,9 @@ push deeper, earn more, unlock more.
 
 ## ▶️ Getting Started
 
-No install, no server, no build:
+**Easiest:** just [play the hosted version](https://knotenvy.github.io/KnotzInvadeSpace/).
+
+To run it locally — no install, no server, no build:
 
 1. Clone or download this repository.
 2. Open **`index.html`** in any modern browser (Chrome, Edge, Firefox, Safari).
@@ -92,10 +101,12 @@ scripts (so it runs straight from the file system — no bundler required):
 |------|----------------|
 | `index.html` / `styles.css` | Page shell + canvas; everything else renders to canvas |
 | `src/config.js`   | All tunables, palette and the asset manifest |
-| `src/utils.js`    | Math, collision (AABB) and text/draw helpers |
+| `src/utils.js`    | Math, collision (AABB), text/draw helpers + zero-alloc `Trail` ring buffer |
+| `src/glowatlas.js`| Pre-rendered glow sprite cache (perf: replaces per-frame `shadowBlur`) |
 | `src/audio.js`    | Web Audio synthesized SFX + procedural music |
 | `src/input.js`    | Unified keyboard + pointer/touch input |
 | `src/particles.js`| Pooled particles, explosions, score popups |
+| `src/postfx.js`   | Offscreen threshold-bloom post-processing |
 | `src/starfield.js`| Parallax background + scrolling star layers |
 | `src/projectile.js`| Pooled bullets (trails) and the player energy beam |
 | `src/powerup.js`  | Falling collectibles and their effects |
