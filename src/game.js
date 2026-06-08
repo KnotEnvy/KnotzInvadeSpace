@@ -41,6 +41,8 @@ class Game {
     this.boss = null;
     this.drones = [];
     this.asteroids = [];
+    this.asteroidPool = [];          // recycled (dead) Asteroid instances
+    this.enemyPools = new Map();     // ctor -> array of recycled enemy instances
     this.hazardTimer = 0;
     this._minionQueue = [];
 
@@ -265,7 +267,7 @@ class Game {
     if (!this._minionQueue.length) return;
     const wave = this.waves[0];
     for (const m of this._minionQueue) {
-      const e = new Beetlemorph(this, m.slotX, m.slotY);
+      const e = this.acquireEnemy(Beetlemorph, m.slotX, m.slotY);
       e.state = 'dive';
       e.x = m.x; e.y = m.y;
       e.diveT = 0;
@@ -290,6 +292,31 @@ class Game {
       if (e.free) { pool._cur = c; return e; }
     }
     return null;
+  }
+
+  // --- entity object pools (Asteroid + enemy/minion classes) --------------
+  // Enemies spawn in spiky bursts (a whole formation per wave, minions on
+  // Splitter death) and asteroids burst on shatter — prime pooling candidates.
+  // reset() reinitialises a recycled instance so no allocation/GC per spawn.
+  spawnAsteroid(cx, cy, sizeKey) {
+    let a = this.asteroidPool.pop();
+    if (a) a.reset(this, cx, cy, sizeKey);
+    else a = new Asteroid(this, cx, cy, sizeKey);
+    this.asteroids.push(a);
+    return a;
+  }
+
+  acquireEnemy(Cls, slotX, slotY) {
+    let pool = this.enemyPools.get(Cls);
+    if (!pool) { pool = []; this.enemyPools.set(Cls, pool); }
+    const e = pool.pop();
+    return e ? e.reset(this, slotX, slotY) : new Cls(this, slotX, slotY);
+  }
+
+  releaseEnemy(e) {
+    let pool = this.enemyPools.get(e.constructor);
+    if (!pool) { pool = []; this.enemyPools.set(e.constructor, pool); }
+    if (pool.length < 128) pool.push(e);
   }
 
   // --- power-ups ----------------------------------------------------------
@@ -358,11 +385,11 @@ class Game {
         const bigChance = this.mode === 'daily' ? this.dailyMods.bigAsteroidChance : 0.6;
         const sizeKey = Utils.chance(bigChance) ? 'big' : 'med';
         const x = Utils.rand(60, CONFIG.WIDTH - 60);
-        this.asteroids.push(new Asteroid(this, x, -50, sizeKey));
+        this.spawnAsteroid(x, -50, sizeKey);
       }
     }
     this.asteroids.forEach(a => a.update(dt));
-    Utils.compact(this.asteroids, a => !a.dead);
+    Utils.compactRelease(this.asteroids, this.asteroidPool, a => a.dead);
   }
 
   applyMagnet(dt) {

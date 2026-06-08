@@ -7,7 +7,11 @@
  * ===================================================================== */
 
 class Asteroid {
-  constructor(game, cx, cy, sizeKey) {
+  constructor(game, cx, cy, sizeKey) { this.reset(game, cx, cy, sizeKey); }
+
+  // Re-initialise (also called by the Game pool on reuse). Reuses the verts
+  // array in place and flags the baked sprite to re-bake for the new shape.
+  reset(game, cx, cy, sizeKey) {
     this.game = game;
     this.sizeKey = sizeKey;
     const cfg = CONFIG.hazard[sizeKey];
@@ -23,10 +27,13 @@ class Asteroid {
     this.spin = Utils.rand(-0.03, 0.03);
     this.hitFlash = 0;
     this.dead = false;
-    // lumpy procedural silhouette
-    this.verts = [];
+    // lumpy procedural silhouette (reuse the array; refill in place)
+    if (!this.verts) this.verts = [];
+    this.verts.length = 0;
     const n = Utils.randInt(8, 11);
     for (let i = 0; i < n; i++) this.verts.push({ a: (i / n) * Math.PI * 2, rr: this.r * Utils.rand(0.78, 1.15) });
+    this._spriteDirty = true;    // re-bake the body sprite for this silhouette
+    return this;
   }
 
   // AABB interface (tightened to ~0.82r so grazes feel fair)
@@ -71,11 +78,10 @@ class Asteroid {
     const cfg = CONFIG.hazard[this.sizeKey];
     if (cfg.split) {
       for (let i = 0; i < cfg.count; i++) {
-        const child = new Asteroid(this.game, this.cx, this.cy, cfg.split);
+        const child = this.game.spawnAsteroid(this.cx, this.cy, cfg.split);
         const a = Utils.rand(0, Math.PI * 2);
         child.vx += Math.cos(a) * 1.3;
         child.vy = Math.abs(child.vy) * 0.7 + Math.abs(Math.sin(a)) * 0.6;
-        this.game.asteroids.push(child);
       }
     }
     if (byPlayer) this.game.addScore(this.score, this.cx, this.cy);
@@ -134,10 +140,15 @@ class Asteroid {
     if (typeof document === 'undefined' || !document.createElement) return null;
     try {
       const R = this.r * 1.25 + 4;          // local half-extent (verts <= 1.15r)
-      const cv = document.createElement('canvas');
-      cv.width = Math.ceil(R * 2); cv.height = Math.ceil(R * 2);
+      const S = Math.ceil(R * 2);
+      let cv = this._sprite;                 // reuse the canvas across resets
+      if (!cv) cv = document.createElement('canvas');
+      if (cv.width !== S) cv.width = S;      // setting width also clears it
+      if (cv.height !== S) cv.height = S;
       const cx = cv.getContext('2d');
       if (!cx || typeof cx.createRadialGradient !== 'function') return null;
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      cx.clearRect(0, 0, S, S);              // clear (dims may have been unchanged)
       cx.translate(R, R);
       this._drawBody(cx);
       this._spriteR = R;
@@ -146,7 +157,9 @@ class Asteroid {
   }
 
   draw(c) {
-    if (this._sprite === undefined) this._sprite = this._buildSprite();
+    if (this._spriteDirty) { this._sprite = this._buildSprite(); this._spriteDirty = false; }
+    // Skip fully off-screen rocks (entry from above the top, fall-out below).
+    if (Utils.offscreen(this.cx - this.r, this.cy - this.r, this.r * 2, this.r * 2, this.r * 0.5 + 24)) return;
     c.save();
     c.translate(this.cx, this.cy);
     c.rotate(this.rot);

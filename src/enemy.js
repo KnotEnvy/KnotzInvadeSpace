@@ -6,7 +6,13 @@
  * ===================================================================== */
 
 class Enemy {
-  constructor(game, slotX, slotY) {
+  constructor(game, slotX, slotY) { this.reset(game, slotX, slotY); }
+
+  // Re-initialise to a fresh formation enemy. Also called by the Game pool when
+  // recycling an instance, so it must clear ALL per-life state (incl. anything
+  // makeElite() inflated — width/height/lives are restored from base here, and
+  // elite-specific bits are re-applied per acquire).
+  reset(game, slotX, slotY) {
     this.game = game;
     this.slotX = slotX;          // offset within the wave grid
     this.slotY = slotY;
@@ -30,6 +36,7 @@ class Enemy {
     this.diveUrge = 0;       // autonomous dive tendency (Stingers use this)
     this.spawnT = 0;         // warp-in timer (materialise on appear)
     this.phase = Utils.rand(0, Math.PI * 2);  // per-enemy idle-bob phase
+    return this;
   }
 
   // Promote any enemy into a tougher, glowing "elite" worth more.
@@ -163,6 +170,9 @@ class Enemy {
 
   draw(c) {
     if (!this.alive) return;
+    // Skip fully off-screen enemies (whole formation during warp-in entry,
+    // divers looping below). Margin (this.width) safely exceeds screen-shake.
+    if (Utils.offscreen(this.x, this.y, this.width, this.height, this.width)) return;
     // pulsing elite aura behind the sprite
     if (this.elite && this.state !== 'dying') {
       const t = 0.5 + 0.5 * Math.sin(this.anim / 180);
@@ -218,27 +228,33 @@ class Enemy {
   }
 }
 
+// Subclasses override reset() (not the constructor) so the Game pool can
+// recycle them: the inherited Enemy constructor calls this.reset(...), which
+// dispatches to the most-derived reset; each calls super.reset() then layers
+// on its own stats/sprite.
 class Beetlemorph extends Enemy {
-  constructor(game, slotX, slotY) {
-    super(game, slotX, slotY);
+  reset(game, slotX, slotY) {
+    super.reset(game, slotX, slotY);
     this.spriteKey = 'beetlemorph';
     this.image = Assets.img.beetlemorph;
     this.lives = 1;
     this.maxLives = 1;
     this.score = 100;
     this.color = CONFIG.colors.beetle;
+    return this;
   }
 }
 
 class Rhinomorph extends Enemy {
-  constructor(game, slotX, slotY) {
-    super(game, slotX, slotY);
+  reset(game, slotX, slotY) {
+    super.reset(game, slotX, slotY);
     this.spriteKey = 'rhinomorph';
     this.image = Assets.img.rhinomorph;
     this.lives = 4;
     this.maxLives = 4;
     this.score = 250;
     this.color = CONFIG.colors.rhino;
+    return this;
   }
   onDamage() {
     // Show progressive damage frames (0 = pristine ... toward cracked).
@@ -257,8 +273,8 @@ class Rhinomorph extends Enemy {
 // Stinger — a small, fast, hyper-aggressive diver. Uses the Beetlemorph
 // sheet (different colour row) but breaks formation on its own far more often.
 class Stinger extends Beetlemorph {
-  constructor(game, slotX, slotY) {
-    super(game, slotX, slotY);
+  reset(game, slotX, slotY) {
+    super.reset(game, slotX, slotY);
     const s = CONFIG.stinger;
     this.score = s.score;
     this.frameY = s.frameY;
@@ -267,6 +283,7 @@ class Stinger extends Beetlemorph {
     this.height *= s.scale;
     this.speedMul = s.speedMul;
     this.diveUrge = CONFIG.enemy.diveChance * s.diveMul;
+    return this;
   }
   startDive(player) {
     super.startDive(player);
@@ -277,8 +294,8 @@ class Stinger extends Beetlemorph {
 // Splitter — an armored alien that bursts into a pair of diving minions
 // when destroyed. Uses the Rhinomorph sheet (distinct colour row).
 class Splitter extends Enemy {
-  constructor(game, slotX, slotY) {
-    super(game, slotX, slotY);
+  reset(game, slotX, slotY) {
+    super.reset(game, slotX, slotY);
     this.spriteKey = 'rhinomorph';
     this.image = Assets.img.rhinomorph;
     const s = CONFIG.splitter;
@@ -288,6 +305,7 @@ class Splitter extends Enemy {
     this.frameY = s.frameY;
     this.minions = s.minions;
     this.color = CONFIG.colors.rhino;
+    return this;
   }
   onDamage() {
     const dmg = this.maxLives - Math.max(0, Math.floor(this.lives));

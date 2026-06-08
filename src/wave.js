@@ -45,10 +45,10 @@ class Wave {
         const sy = r * this.cellY;
         const roll = this.rng();
         let e;
-        if (roll < splitterChance) e = new Splitter(this.game, sx, sy);
-        else if (roll < splitterChance + stingerChance) e = new Stinger(this.game, sx, sy);
-        else if (this.rng() < armorRatio) e = new Rhinomorph(this.game, sx, sy);
-        else e = new Beetlemorph(this.game, sx, sy);
+        if (roll < splitterChance) e = this.game.acquireEnemy(Splitter, sx, sy);
+        else if (roll < splitterChance + stingerChance) e = this.game.acquireEnemy(Stinger, sx, sy);
+        else if (this.rng() < armorRatio) e = this.game.acquireEnemy(Rhinomorph, sx, sy);
+        else e = this.game.acquireEnemy(Beetlemorph, sx, sy);
         if (this.rng() < eliteChance) e.makeElite();
         this.enemies.push(e);
       }
@@ -97,9 +97,17 @@ class Wave {
       }
     }
 
-    // update + cull enemies (compact in place — no per-frame array realloc)
+    // update + cull enemies (compact in place; recycle the dead into the
+    // Game's per-class enemy pool so the next wave/minions reuse them).
     for (const e of this.enemies) e.update(dt, this.x, this.y);
-    Utils.compact(this.enemies, e => e.alive);
+    const arr = this.enemies;
+    let w = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const e = arr[i];
+      if (e.alive) { if (w !== i) arr[w] = e; w++; }
+      else this.game.releaseEnemy(e);
+    }
+    arr.length = w;
 
     if (this.enemies.length === 0) this.complete = true;
 

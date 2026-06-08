@@ -60,6 +60,27 @@ const Utils = {
     return arr;
   },
 
+  // Like compact(), but pushes the removed (dead) entries onto `pool` for
+  // reuse instead of dropping them. isDead(item) -> true to recycle.
+  compactRelease(arr, pool, isDead) {
+    let w = 0;
+    for (let r = 0; r < arr.length; r++) {
+      const item = arr[r];
+      if (isDead(item)) { if (pool.length < 256) pool.push(item); }
+      else { if (w !== r) arr[w] = item; w++; }
+    }
+    arr.length = w;
+    return arr;
+  },
+
+  // True when the AABB [x,y,w,h] is fully outside the design viewport,
+  // expanded by margin m. Used to skip draw() for off-screen entities;
+  // keep m larger than the max screen-shake so nothing pops at the edges.
+  offscreen(x, y, w, h, m = 0) {
+    return x + w + m < 0 || x - m > CONFIG.WIDTH ||
+           y + h + m < 0 || y - m > CONFIG.HEIGHT;
+  },
+
   // Draw text with a soft drop shadow — used everywhere in the HUD/menus.
   text(c, str, x, y, {
     size = 24, font = "'Orbitron', 'Trebuchet MS', sans-serif", color = '#fff',
