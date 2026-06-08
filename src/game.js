@@ -277,9 +277,24 @@ class Game {
     this._minionQueue.length = 0;
   }
 
+  // O(1)-amortised pool acquire: scan from a rotating cursor stored on the
+  // array, so we don't re-scan filled slots from index 0 on every spawn.
+  // (Bullets self-free at scattered points — collisions, smart-bomb, off-screen
+  // — so a cursor is simpler and safe vs. a release-hook free-stack.)
+  _acquireSlot(pool) {
+    const n = pool.length;
+    let c = pool._cur || 0;
+    for (let s = 0; s < n; s++) {
+      const e = pool[c];
+      c = c + 1 === n ? 0 : c + 1;
+      if (e.free) { pool._cur = c; return e; }
+    }
+    return null;
+  }
+
   // --- power-ups ----------------------------------------------------------
   spawnPowerUp(x, y, forced) {
-    const p = this.powerups.find(p => p.free);
+    const p = this._acquireSlot(this.powerups);
     if (!p) return;
     let type = forced;
     if (!type) {
@@ -314,7 +329,7 @@ class Game {
 
   // --- bullet pools -------------------------------------------------------
   spawnBullet(cx, cy, vx, vy, opt = {}) {
-    const b = this.bullets.find(b => b.free);
+    const b = this._acquireSlot(this.bullets);
     if (!b) return;
     const w = opt.width || CONFIG.bullet.width;
     const h = opt.height || CONFIG.bullet.height;
@@ -322,7 +337,7 @@ class Game {
   }
 
   spawnEnemyBullet(cx, cy, vx, vy, opt = {}) {
-    const b = this.enemyBullets.find(b => b.free);
+    const b = this._acquireSlot(this.enemyBullets);
     if (!b) return;
     const w = opt.width || CONFIG.enemyBullet.width;
     const h = opt.height || CONFIG.enemyBullet.height;

@@ -79,3 +79,34 @@ const Utils = {
     c.closePath();
   },
 };
+
+/* ---------------------------------------------------------------------
+ * Trail — a fixed-capacity ring buffer of pre-allocated {x,y} points for
+ * motion trails (bullets / power-ups / drones). The old code .unshift()'d a
+ * fresh object every frame per entity (O(n) shift + GC churn); this reuses
+ * the same point objects and just advances a head index (O(1), zero alloc).
+ * forEach visits NEWEST -> OLDEST so callers fade the tail the same way.
+ * ------------------------------------------------------------------- */
+class Trail {
+  constructor(len) {
+    this.len = len;
+    this.pts = new Array(len);
+    for (let i = 0; i < len; i++) this.pts[i] = { x: 0, y: 0 };
+    this.head = -1;   // index of the newest point
+    this.count = 0;   // points currently stored (<= len)
+  }
+  clear() { this.head = -1; this.count = 0; }
+  push(x, y) {
+    this.head = this.head + 1 === this.len ? 0 : this.head + 1;
+    const p = this.pts[this.head];
+    p.x = x; p.y = y;
+    if (this.count < this.len) this.count++;
+  }
+  // cb(point, i, count): i=0 is the newest point.
+  forEach(cb) {
+    for (let i = 0; i < this.count; i++) {
+      const idx = (this.head - i + this.len) % this.len;
+      cb(this.pts[idx], i, this.count);
+    }
+  }
+}

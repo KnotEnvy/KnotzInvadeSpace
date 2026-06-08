@@ -14,7 +14,7 @@ class Drone {
     this.y = CONFIG.HEIGHT - 140;
     this.bob = index * Math.PI;
     this.spin = 0;
-    this.hist = [];
+    this.hist = new Trail(7);
     // stagger fire so multiple drones don't shoot on the same frame
     this.fireTimer = CONFIG.drone.fireCooldown * (index / Math.max(1, total));
   }
@@ -30,10 +30,7 @@ class Drone {
     this.x = Utils.lerp(this.x, tx, 0.14 * k);
     this.y = Utils.lerp(this.y, ty, 0.14 * k);
 
-    if (Meta.trailsOn()) {
-      this.hist.unshift({ x: this.x + this.size / 2, y: this.y + this.size / 2 });
-      if (this.hist.length > 7) this.hist.pop();
-    }
+    if (Meta.trailsOn()) this.hist.push(this.x + this.size / 2, this.y + this.size / 2);
 
     if (!p.alive) return;
     this.fireTimer -= dt;
@@ -48,15 +45,16 @@ class Drone {
   draw(c) {
     c.save();
     c.globalCompositeOperation = 'lighter';
-    // motion trail
-    for (let i = 1; i < this.hist.length; i++) {
-      const t = 1 - i / this.hist.length;
+    // motion trail (skip i=0, the current position)
+    this.hist.forEach((p, i, n) => {
+      if (i === 0) return;
+      const t = 1 - i / n;
       c.globalAlpha = t * 0.4;
       c.fillStyle = CONFIG.drone.color;
       c.beginPath();
-      c.arc(this.hist[i].x, this.hist[i].y, this.size * 0.32 * t, 0, Math.PI * 2);
+      c.arc(p.x, p.y, this.size * 0.32 * t, 0, Math.PI * 2);
       c.fill();
-    }
+    });
     c.globalAlpha = 1;
     c.translate(this.x + this.size / 2, this.y + this.size / 2);
     c.rotate(this.spin);

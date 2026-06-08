@@ -13,7 +13,7 @@ const POWERUP_TYPES = {
 };
 
 class PowerUp {
-  constructor() { this.free = true; }
+  constructor() { this.free = true; this.hist = new Trail(6); }
   spawn(x, y, type) {
     this.x = x; this.y = y;
     this.type = type;
@@ -23,7 +23,7 @@ class PowerUp {
     this.spin = 0;
     this.bob = Math.random() * Math.PI * 2;
     this.pulse = Math.random() * Math.PI * 2;
-    this.hist = [];
+    this.hist.clear();
     this.free = false;
   }
   update(dt) {
@@ -33,10 +33,7 @@ class PowerUp {
     this.spin += 0.04 * k;
     this.bob += 0.1 * k;
     this.pulse += 0.12 * k;
-    if (Meta.trailsOn()) {
-      this.hist.unshift({ x: this.x + this.width / 2, y: this.y + this.height / 2 });
-      if (this.hist.length > 6) this.hist.pop();
-    }
+    if (Meta.trailsOn()) this.hist.push(this.x + this.width / 2, this.y + this.height / 2);
     if (this.y > CONFIG.HEIGHT + 40) this.free = true;
   }
   draw(c) {
@@ -47,15 +44,16 @@ class PowerUp {
     const r = this.width / 2;
     c.save();
     c.globalCompositeOperation = 'lighter';
-    // soft falling trail
-    for (let i = 1; i < this.hist.length; i++) {
-      const t = 1 - i / this.hist.length;
+    // soft falling trail (skip i=0, the current position)
+    this.hist.forEach((p, i, n) => {
+      if (i === 0) return;
+      const t = 1 - i / n;
       c.globalAlpha = t * 0.32;
       c.fillStyle = def.color;
       c.beginPath();
-      c.arc(this.hist[i].x, this.hist[i].y, r * 0.5 * t, 0, Math.PI * 2);
+      c.arc(p.x, p.y, r * 0.5 * t, 0, Math.PI * 2);
       c.fill();
-    }
+    });
     c.globalAlpha = 1;
     // pulsing halo
     const hp = 0.55 + 0.45 * Math.sin(this.pulse);

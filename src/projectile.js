@@ -4,7 +4,7 @@
  * ===================================================================== */
 
 class Bullet {
-  constructor() { this.free = true; }
+  constructor() { this.free = true; this.trail = new Trail(6); }
   start(x, y, vx, vy, opt = {}) {
     this.x = x; this.y = y;
     this.vx = vx; this.vy = vy;
@@ -13,14 +13,13 @@ class Bullet {
     this.damage = opt.damage ?? 1;
     this.color = opt.color || CONFIG.colors.gold;
     this.friendly = opt.friendly ?? true;
-    this.trail = [];
+    this.trail.clear();
     this.free = false;
   }
   update(dt) {
     if (this.free) return;
     const k = dt / CONFIG.STEP_MS;
-    this.trail.unshift({ x: this.x + this.width / 2, y: this.y + this.height / 2 });
-    if (this.trail.length > 6) this.trail.pop();
+    this.trail.push(this.x + this.width / 2, this.y + this.height / 2);
     this.x += this.vx * k;
     this.y += this.vy * k;
     if (this.y < -40 || this.y > CONFIG.HEIGHT + 40 ||
@@ -34,15 +33,16 @@ class Bullet {
     c.globalCompositeOperation = 'lighter';
     // trail (skipped under reduced-motion for a calmer screen)
     if (!Meta.reducedMotion()) {
-      for (let i = 0; i < this.trail.length; i++) {
-        const t = 1 - i / this.trail.length;
+      const col = this.color;
+      this.trail.forEach((p, i, n) => {
+        const t = 1 - i / n;
         c.globalAlpha = t * 0.5;
-        c.fillStyle = this.color;
+        c.fillStyle = col;
         const r = this.width * 0.6 * t;
         c.beginPath();
-        c.arc(this.trail[i].x, this.trail[i].y, r, 0, Math.PI * 2);
+        c.arc(p.x, p.y, r, 0, Math.PI * 2);
         c.fill();
-      }
+      });
     }
     c.globalAlpha = 1;
 

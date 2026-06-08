@@ -160,18 +160,21 @@ class Particles {
     this.popups = Array.from({ length: 40 }, () => new Popup());
     this.shockwaves = Array.from({ length: 24 }, () => new Shockwave());
     this.bursts = Array.from({ length: 24 }, () => new SpriteBurst());
+    // O(1) acquisition: a stack of dead-slot indices per pool. Particles only
+    // ever die in their own update()/clear(), so we reclaim freed indices in
+    // _age() and pop them on emit — no linear scan even with ~1200 live.
+    this.poolFree = this._indices(this.pool.length);
+    this.popupFree = this._indices(this.popups.length);
+    this.shockFree = this._indices(this.shockwaves.length);
+    this.burstFree = this._indices(this.bursts.length);
   }
-  _get() {
-    for (const p of this.pool) if (p.dead) return p;
-    // Pool exhausted: recycle the oldest by replacing the first one.
-    return this.pool[0];
-  }
-  _getPopup() {
-    for (const p of this.popups) if (p.dead) return p;
-    return this.popups[0];
-  }
-  _getShock() { for (const s of this.shockwaves) if (s.dead) return s; return this.shockwaves[0]; }
-  _getBurst() { for (const b of this.bursts) if (b.dead) return b; return this.bursts[0]; }
+  _indices(n) { const a = new Array(n); for (let i = 0; i < n; i++) a[i] = n - 1 - i; return a; }
+  // Pop a free slot; when exhausted, recycle the oldest (index 0) like before.
+  _acquire(pool, free) { return free.length ? pool[free.pop()] : pool[0]; }
+  _get()      { return this._acquire(this.pool, this.poolFree); }
+  _getPopup() { return this._acquire(this.popups, this.popupFree); }
+  _getShock() { return this._acquire(this.shockwaves, this.shockFree); }
+  _getBurst() { return this._acquire(this.bursts, this.burstFree); }
 
   emit(x, y, opt) { this._get().spawn(x, y, opt); }
 
@@ -261,11 +264,19 @@ class Particles {
     this.spriteBurst(x, y, theme, 130 * power);
   }
 
+  // Update each pool, reclaiming the index of anything that just died into its
+  // free-stack (keeps the invariant: an index is in *Free iff that slot is dead).
+  _age(pool, free, dt) {
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
+      if (!p.dead) { p.update(dt); if (p.dead) free.push(i); }
+    }
+  }
   update(dt) {
-    for (const p of this.pool) if (!p.dead) p.update(dt);
-    for (const p of this.popups) if (!p.dead) p.update(dt);
-    for (const s of this.shockwaves) if (!s.dead) s.update(dt);
-    for (const b of this.bursts) if (!b.dead) b.update(dt);
+    this._age(this.pool, this.poolFree, dt);
+    this._age(this.popups, this.popupFree, dt);
+    this._age(this.shockwaves, this.shockFree, dt);
+    this._age(this.bursts, this.burstFree, dt);
   }
   draw(c) {
     c.save();
@@ -281,5 +292,9 @@ class Particles {
     for (const p of this.popups) p.dead = true;
     for (const s of this.shockwaves) s.dead = true;
     for (const b of this.bursts) b.dead = true;
+    this.poolFree = this._indices(this.pool.length);
+    this.popupFree = this._indices(this.popups.length);
+    this.shockFree = this._indices(this.shockwaves.length);
+    this.burstFree = this._indices(this.bursts.length);
   }
 }
