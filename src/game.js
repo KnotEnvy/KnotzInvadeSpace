@@ -362,7 +362,7 @@ class Game {
       }
     }
     this.asteroids.forEach(a => a.update(dt));
-    this.asteroids = this.asteroids.filter(a => !a.dead);
+    Utils.compact(this.asteroids, a => !a.dead);
   }
 
   applyMagnet(dt) {

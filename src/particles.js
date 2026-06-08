@@ -85,8 +85,8 @@ class Shockwave {
     c.globalAlpha = (1 - t) * 0.9;
     c.strokeStyle = this.color;
     c.lineWidth = this.lw * (1 - t) + 0.6;
-    c.shadowColor = this.color;
-    c.shadowBlur = 14;
+    // No shadowBlur: shockwaves only spawn at fx tiers (medium/high), which run
+    // the bloom pass — the additive stroke blooms instead of paying a blur here.
     c.beginPath();
     c.arc(this.x, this.y, Math.max(0.5, r), 0, Math.PI * 2);
     c.stroke();

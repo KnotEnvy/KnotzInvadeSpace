@@ -64,7 +64,7 @@ class Starfield {
       }
     }
     for (const sh of this.shooting) { sh.x += sh.vx * k; sh.y += sh.vy * k; sh.life += dt; }
-    this.shooting = this.shooting.filter(sh => sh.life < sh.max);
+    Utils.compact(this.shooting, sh => sh.life < sh.max);
   }
 
   draw(c) {

@@ -90,10 +90,10 @@ class Asteroid {
     c.closePath();
   }
 
-  draw(c) {
-    c.save();
-    c.translate(this.cx, this.cy);
-    c.rotate(this.rot);
+  // The static body (silhouette + gradient + craters + rim) in LOCAL space
+  // (origin = asteroid centre). Used to bake the sprite once, and as the
+  // no-canvas fallback path.
+  _drawBody(c) {
     this._path(c);
     const g = c.createRadialGradient(-this.r * 0.3, -this.r * 0.3, this.r * 0.2, 0, 0, this.r);
     g.addColorStop(0, '#b6a690');
@@ -124,6 +124,38 @@ class Asteroid {
     c.stroke();
     c.globalCompositeOperation = 'source-over';
     c.globalAlpha = 1;
+  }
+
+  // Bake the static body to a small offscreen canvas ONCE. Only rotation
+  // changes at runtime (applied by the caller), so per-frame cost drops from a
+  // gradient + several paths to a single drawImage. null -> use _drawBody
+  // (covers environments without an offscreen canvas).
+  _buildSprite() {
+    if (typeof document === 'undefined' || !document.createElement) return null;
+    try {
+      const R = this.r * 1.25 + 4;          // local half-extent (verts <= 1.15r)
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil(R * 2); cv.height = Math.ceil(R * 2);
+      const cx = cv.getContext('2d');
+      if (!cx || typeof cx.createRadialGradient !== 'function') return null;
+      cx.translate(R, R);
+      this._drawBody(cx);
+      this._spriteR = R;
+      return cv;
+    } catch (_) { return null; }
+  }
+
+  draw(c) {
+    if (this._sprite === undefined) this._sprite = this._buildSprite();
+    c.save();
+    c.translate(this.cx, this.cy);
+    c.rotate(this.rot);
+    if (this._sprite) {
+      const R = this._spriteR;
+      c.drawImage(this._sprite, -R, -R, R * 2, R * 2);
+    } else {
+      this._drawBody(c);
+    }
     if (this.hitFlash > 0) {
       c.globalAlpha = (this.hitFlash / 80) * 0.7;
       c.globalCompositeOperation = 'lighter';

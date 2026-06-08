@@ -55,16 +55,23 @@ class PowerUp {
       c.fill();
     });
     c.globalAlpha = 1;
-    // pulsing halo
+    // pulsing halo — a pre-rendered blob scaled by the pulse (no per-frame
+    // gradient allocation); falls back to a gradient if blobs are unavailable.
     const hp = 0.55 + 0.45 * Math.sin(this.pulse);
-    const halo = c.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * (1.5 + 0.4 * hp));
-    halo.addColorStop(0, def.color);
-    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    const haloR = r * (1.9 + 0.4 * hp);
     c.globalAlpha = 0.4 + 0.3 * hp;
-    c.fillStyle = halo;
-    c.beginPath();
-    c.arc(cx, cy, r * (1.9 + 0.4 * hp), 0, Math.PI * 2);
-    c.fill();
+    const blob = GlowSprites.blob(def.color);
+    if (blob) {
+      c.drawImage(blob, cx - haloR, cy - haloR, haloR * 2, haloR * 2);
+    } else {
+      const halo = c.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * (1.5 + 0.4 * hp));
+      halo.addColorStop(0, def.color);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = halo;
+      c.beginPath();
+      c.arc(cx, cy, haloR, 0, Math.PI * 2);
+      c.fill();
+    }
     c.globalAlpha = 1;
     c.shadowColor = def.color;
     c.shadowBlur = 18;

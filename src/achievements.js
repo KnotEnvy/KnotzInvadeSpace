@@ -61,7 +61,7 @@ class Achievements {
 
   update(dt) {
     for (const t of this.toasts) t.t += dt;
-    this.toasts = this.toasts.filter(t => t.t < t.dur);
+    Utils.compact(this.toasts, t => t.t < t.dur);
   }
 
   // Slide-in "unlocked" cards at the top of the screen (shown in any state).

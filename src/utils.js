@@ -47,6 +47,19 @@ const Utils = {
   // Format a number with thousands separators (score readouts).
   commas(n) { return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); },
 
+  // Drop entries where keep(item) is false, IN PLACE and order-preserving,
+  // without allocating a new array (unlike Array.prototype.filter, which the
+  // per-frame cull sites used to call every frame). Returns the same array.
+  compact(arr, keep) {
+    let w = 0;
+    for (let r = 0; r < arr.length; r++) {
+      const item = arr[r];
+      if (keep(item)) { if (w !== r) arr[w] = item; w++; }
+    }
+    arr.length = w;
+    return arr;
+  },
+
   // Draw text with a soft drop shadow — used everywhere in the HUD/menus.
   text(c, str, x, y, {
     size = 24, font = "'Orbitron', 'Trebuchet MS', sans-serif", color = '#fff',

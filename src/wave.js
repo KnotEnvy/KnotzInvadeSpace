@@ -28,6 +28,7 @@ class Wave {
     this.complete = false;
 
     this.enemies = [];
+    this._formation = [];        // reused scratch (refilled each frame, no alloc)
     this.maxDivers = 1 + Math.floor(rows / 2);
     this.create(armorRatio);
   }
@@ -75,10 +76,18 @@ class Wave {
       }
 
       // occasionally launch a diver and let someone shoot (difficulty and the
-      // daily 'frenzy' modifier scale how aggressive the formation is)
+      // daily 'frenzy' modifier scale how aggressive the formation is).
+      // Single pass: collect formation members (reused scratch) + count divers,
+      // instead of three per-frame .filter allocations.
       const aggro = Meta.diffMods().enemyFireMul * this.game.aggroMul();
-      const formation = this.enemies.filter(e => e.state === 'formation');
-      if (formation.length && this.diverCount < this.maxDivers &&
+      const formation = this._formation;
+      formation.length = 0;
+      let divers = 0;
+      for (const e of this.enemies) {
+        if (e.state === 'formation') formation.push(e);
+        else if (e.state === 'dive' || e.state === 'return') divers++;
+      }
+      if (formation.length && divers < this.maxDivers &&
           Utils.chance(CONFIG.enemy.diveChance * aggro * k * formation.length)) {
         Utils.pick(formation).startDive(this.game.player);
       }
@@ -88,9 +97,9 @@ class Wave {
       }
     }
 
-    // update + cull enemies
+    // update + cull enemies (compact in place — no per-frame array realloc)
     for (const e of this.enemies) e.update(dt, this.x, this.y);
-    this.enemies = this.enemies.filter(e => e.alive);
+    Utils.compact(this.enemies, e => e.alive);
 
     if (this.enemies.length === 0) this.complete = true;
 
