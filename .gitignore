@@ -1,0 +1,8 @@
+# Scratch verification harnesses (kept out of the repo per handoff)
+.smoke/
+.tmp/
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.log

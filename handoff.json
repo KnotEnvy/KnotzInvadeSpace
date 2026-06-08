@@ -2,7 +2,8 @@
   "$schema": "https://json.schemastore.org/package.json-ish-handoff",
   "handoffVersion": "2.0",
   "generatedOn": "2026-06-04",
-  "audience": "The next team is responsible for the AAA-level VISUAL overhaul. Gameplay/systems are feature-complete; see 'forTheVisualsTeam' for exactly where art/render hooks live.",
+  "lastUpdated": "2026-06-07",
+  "audience": "The next team owns PERFORMANCE OPTIMIZATION — lock the frame rate across the whole game, audit pooling, and apply modern render-optimization techniques. Gameplay/systems are feature-complete and the AAA visual & juice pass shipped (phase 9). START at 'forTheOptimizationTeam': it names the exact hotspots the visual pass introduced (shadowBlur + per-frame gradients/allocations) and where they live.",
   "project": {
     "name": "Knotz: Invade Space",
     "tagline": "A modern, juiced-up roguelite reimagining of Space Invaders.",
@@ -26,7 +27,7 @@
       { "phase": 8, "date": "2026-06-04", "title": "Economy & difficulty balance pass", "delivered": "Credit payout nudged up (perScore .015, perBoss 75); added CONFIG.wave.maxSpeed cap for fair deep waves. Remaining balance is data in CONFIG for playtesters." },
       { "phase": 9, "date": "2026-06-05", "title": "AAA visual & juice pass", "delivered": "NEW src/postfx.js: offscreen threshold-bloom post-processing (drawImage+ctx.filter only, never getImageData; feature-detected with a hard no-op fallback). Graphics Quality setting (low/medium/high) in CONFIG.quality + Meta.quality()/fx()/extras()/trailsOn() scales bloom + particle budgets. JUICE: hit-stop (Game.freeze — a real-time sim-skip counter, fixed-timestep untouched), zoom-punch (Game.punchZoom), expanding Shockwave + textured SpriteBurst emitters (reusing the unused VFX columns 6-10 of boss.png), orb enemy bullets, brighter player bolts, beam halo+muzzle flare, combo escalation glow, muzzle recoil. ENTITIES/ENV: enemy warp-in + idle breathing + dive trails, player engine flames, power-up halos/trails, drone/asteroid trails+rim, richer starfield (shooting stars, hero-star flares), in-game vignette. SCREENS: HUD score-rollup + energy shimmer + low-life pulse, animated banner sweep-in, menu hover states, polished loading screen, boss muzzle telegraphs. SET-PIECES: campaign victory-over-Earth finale (horizon glow + rolling fireworks), boss-death cinematic, per-sector colour grade. All gated by Meta.reducedMotion()/shakeEnabled() for accessibility; Low tier ≈ pre-pass baseline." }
     ],
-    "codeSize": { "srcFiles": 23, "srcLinesOfCode": 4498 }
+    "codeSize": { "srcFiles": 24, "srcLinesOfCode": 4498 }
   },
 
   "techStack": {
@@ -63,7 +64,7 @@
   },
 
   "scriptLoadOrder": [
-    "src/config.js", "src/utils.js", "src/audio.js", "src/input.js",
+    "src/config.js", "src/utils.js", "src/glowatlas.js", "src/audio.js", "src/input.js",
     "src/particles.js", "src/postfx.js", "src/starfield.js", "src/projectile.js", "src/powerup.js",
     "src/meta.js", "src/achievements.js", "src/daily.js", "src/player.js",
     "src/enemy.js", "src/boss.js", "src/wave.js", "src/drone.js", "src/hazard.js",
@@ -73,6 +74,7 @@
   "fileMap": {
     "src/config.js": { "exports": "CONFIG (global)", "role": "All tunables: resolution, timestep, player/bullet/enemy/wave/boss stats, hazards, drone, credits, palette (CONFIG.colors), background list, sprite-sheet frame layouts, AND newer blocks: settings defaults (incl. quality), difficulty presets, CONFIG.quality graphics tiers (bloom/particleMul/trails/fx/extras), modes, campaign, daily.modifiers, touch button layout, saveVersion, storageKey." },
     "src/postfx.js": { "exports": "PostFX (singleton)", "role": "Offscreen threshold-bloom post-processing. begin(ctx) returns the scene ctx (offscreen when bloom on, else the real ctx); end(ctx) bright-passes + blurs + composites additively, then UI draws crisp on top. drawImage + ctx.filter ONLY (never getImageData -> no file:// taint). Feature-detected once; no-ops if unsupported (covers old browsers + the Node-VM smoke harness). Quality params from Meta.quality()." },
+    "src/glowatlas.js": { "exports": "GlowSprites (singleton)", "role": "PERF: pre-rendered glow sprite cache. blob(color)/orb(color) bake a radial glow ONCE into a small offscreen canvas (cached by colour), so hot draws blit additively (drawImage) instead of paying per-frame ctx.shadowBlur + createRadialGradient. Wired into Particle.draw, enemy-orb + friendly-bolt Bullet.draw. Feature-detected like postfx.js; returns null -> callers fall back to their original shadowBlur path (covers old browsers + the Node-VM smoke harness). Parses #rgb/#rrggbb; drawImage only (no getImageData -> no file:// taint)." },
     "src/utils.js": { "exports": "Utils", "role": "Math (clamp/lerp/rand/randInt/pick/chance/dist), Utils.aabb, easing, commas, Utils.text + Utils.roundRect canvas helpers, and Utils.makeRng (mulberry32) + Utils.hashStr (seed the Daily)." },
     "src/audio.js": { "exports": "AudioEngine, Sound (singleton)", "role": "Synthesized SFX + procedural music. setMuted + setVolumes({master,music,sfx}) layered over base bus levels via _applyVolumes(); safe to call before init()." },
     "src/input.js": { "exports": "Input", "role": "Unified keyboard + MULTI-touch + mouse. touches Map; high-level intents left/right/fire/beam (keys + on-screen buttons); buttonRect/_touchOn/buttonsActive for the touch overlay; wasPressed/consumePressed for menus. Maps client coords to the 720x960 design space." },
@@ -134,6 +136,45 @@
     ]
   },
 
+  "forTheOptimizationTeam": {
+    "mission": "Drive the game to a locked frame rate (target 60fps; degrade gracefully on weak hardware) across every state and graphics tier WITHOUT changing gameplay timing or the no-build file:// constraint. Audit pooling, eliminate per-frame allocations (GC stutter), and cut the most expensive Canvas-2D operations. The phase-9 visual/juice pass deliberately leaned on shadowBlur + per-frame gradients for the look — that is where the cost now lives, and it is concentrated in the *.draw(c) methods.",
+    "measurementFirst": "There is NO checked-in FPS number. The visual team's automated frame-timer (headless Edge via the DevTools Protocol) hung whenever the shell auto-backgrounded it — Edge's remote-debugging server does not initialise when the process is spawned detached; the FOREGROUND screenshot harnesses worked fine. So: profile in a REAL browser. Use the DevTools Performance panel (record 5-10s of a busy boss wave + asteroids at High), or run a headless CDP timer in the foreground only. Frame budget = 16.67ms at 60fps. Always measure per-tier (Low/Med/High via Settings -> GRAPHICS) AND on a mid/low-end device, not just a fast desktop. Watch the Performance panel's GC bands — minor-GC spikes lining up with explosions confirm the allocation hotspots below.",
+    "topCostsByImpact": [
+      "shadowBlur — THE big one. 32 call-sites across 14 files; the worst is Particle.draw (particles.js) which sets shadowColor/shadowBlur PER glowing particle, up to ~1200 live during explosions. shadowBlur is among the most expensive Canvas-2D operations. WIN: pre-render each glow ONCE to a small offscreen canvas (a radial 'blob' sprite) and drawImage it additively (globalCompositeOperation='lighter') — zero runtime blur. A tiny atlas keyed by colour bucket + size covers particles, bullet glows and muzzle flashes.",
+      "Per-frame gradient allocation in hot draws — createRadialGradient/createLinearGradient are re-allocated EVERY frame PER entity. Worst offenders: enemy 'orb' bullets (projectile.js Bullet.draw, ~L53, up to 160 live), power-up halos (powerup.js ~L62, up to 24), asteroid bodies (hazard.js ~L98). WIN: cache or pre-render to sprites; a single pre-rendered orb sprite per bullet colour also removes the orb's shadowBlur. (Beam's 3 gradients and the HUD/boss-bar gradients are once-per-frame singletons — low priority.)",
+      "Per-frame array allocation (GC churn) — Game.updateHazards rebuilds this.asteroids via .filter EVERY frame (game.js ~L350); Wave.update rebuilds enemies via .filter plus extra .filter scans for diverCount/formation (wave.js ~L57/L80/L93); achievements toasts (achievements.js ~L64) and starfield shooting-stars (starfield.js ~L67) filter each frame too. WIN: compact in place (swap-and-pop), iterate without allocating, and cache derived counts.",
+      "Trail-point allocation — Bullet.trail (projectile.js ~L22), PowerUp.hist (powerup.js ~L37) and Drone.hist (drone.js ~L34) call .unshift({x,y}) every frame per entity: unshift is O(n) AND allocates a fresh object each frame. WIN: ring buffers of pre-allocated points indexed by a moving head.",
+      "Linear-scan pool acquisition — spawnBullet/spawnEnemyBullet/spawnPowerUp use Array.find(free) (game.js ~L282/L317/L325) and Particles._get() scans up to 1200 for a dead slot on every emit (particles.js); a big explosion makes that O(n) per particle. WIN: maintain a free-list / index stack for O(1) acquire + release."
+    ],
+    "poolingStatus": {
+      "pooled": "Shared Bullet pool: bullets(72) + enemyBullets(160). powerups(24). particles(1200) + shockwaves(24) + bursts(24) + popups(40). All correct as pools, but acquired by LINEAR SCAN (.find / for-loop), not O(1).",
+      "notPooledAllocatesAtRuntime": "Asteroid (Game.spawn ~game.js L346 + Asteroid.shatter split ~hazard.js L74), Splitter minions (new Beetlemorph ~game.js L268), Wave enemies (new per wave ~wave.js L50), Drone (new per run ~game.js L115). Plus all the trail-point objects, per-frame gradients and per-frame arrays above. These are the source of the GC sawtooth during heavy waves and boss deaths.",
+      "recommendation": "Add real free-list pools for Asteroid and the enemy/minion classes (or recycle Wave.enemies between waves); convert every '.find(free)' acquisition to an index-based free-list. Enemies are short-lived and spiky (minions on Splitter death) — prime pooling candidates."
+    },
+    "modernTechniques": [
+      "Pre-rendered sprite atlas for glows/orbs/particles via an offscreen canvas + drawImage — removes runtime shadowBlur AND gradients (the single biggest win; do this first).",
+      "OffscreenCanvas for the bloom buffers (postfx.js already uses plain offscreen canvases; OffscreenCanvas is a drop-in where supported and keeps the no-build constraint). A dedicated render Worker is possible but optional/advanced.",
+      "Batch additive draws: group everything using globalCompositeOperation='lighter' so the composite mode + shadow state are set once per group, minimising state thrash.",
+      "Aggressive culling: bullets already free themselves off-screen; extend the same early-out to skip draw() for fully off-screen or zero-alpha entities.",
+      "Optional: split the mostly-static HUD onto its own layer/canvas from the moving world (dirty-rect style) so the HUD isn't recomposited every frame.",
+      "Reuse & extend the Graphics Quality tiers (CONFIG.quality + Meta.quality/fx/extras/trailsOn) — they already gate the heavy FX. Wire any new perf budget (e.g. a 'potato' tier with bloom off + tighter particle caps) through them so Low stays cheap by construction."
+    ],
+    "postfxNote": "src/postfx.js is already allocation-free per frame: it reuses two small bloom buffers (resized only on a quality change) and uses drawImage + ctx.filter, never getImageData. Its cost is the blur passes + one full-frame composite — cheap, but profile it on weak GPUs and consider lowering bloomScale/blurPasses (or a new lowest tier) if it shows up.",
+    "doNotBreak": [
+      "Fixed-timestep contract: update(dt) runs at CONFIG.STEP_MS and must stay deterministic — optimise RENDER freely, never sim timing. The hit-stop (Game.freeze) is a real-time sim-skip counter; keep it real-time, not a dt hack.",
+      "No-build / file://: classic <script> tags only, no ES modules / fetch(). OffscreenCanvas + classic Workers are allowed (no bundler), but a Worker needs its own classic script file — verify double-click still runs.",
+      "PostFX must stay getImageData-free (file:// canvas taint) and keep its feature-detect no-op fallback (covers old browsers + the Node-VM smoke harness).",
+      "Accessibility gating (Meta.reducedMotion()/shakeEnabled()) and Daily determinism (seeded wave.rng / game.waveRng) must survive any refactor.",
+      "Coordinate conventions (top-left AABB) and the center-based spawnBullet/spawnEnemyBullet API."
+    ],
+    "howToVerify": "1) node --check src/*.js. 2) Reuse the Node-VM smoke harness (drives every state/mode/tier + a reduced-motion pass; mocks the browser, so it proves no logic regressions but NOT pixels or FPS). 3) Profile FPS in a real browser before AND after each change, on the SAME busy scene (boss wave + ~6 asteroids + a smart-bomb) at each Graphics tier; confirm frame time dropped and GC bands shrank. 4) Re-capture before/after screenshots (foreground headless CDP) to confirm the look is unchanged.",
+    "verificationHarnesses": "Recreated (gitignored, under .smoke/): smoke.js (Node-VM smoke harness — `node .smoke/smoke.js`) and shot.js (foreground headless-Edge CDP screenshot — `node .smoke/shot.js <out.png> [low|medium|high]`). Both honour the handoff gotchas (space-in-path file URL, child-not-detached Edge launch, setTimeout stubbed so the audio loop can't hang the process).",
+    "progressLog": [
+      "DONE (phase 10a): shadowBlur removed from the hottest paths via src/glowatlas.js — Particle.draw (~1200/frame), enemy-orb Bullet.draw (~160/frame, also kills its per-frame createRadialGradient), and friendly-bolt Bullet.draw (~72/frame). Verified: node --check, smoke harness green, and before/after CDP screenshots at High + Low look unchanged. Fallback to shadowBlur preserved when offscreen canvases are unavailable.",
+      "NEXT: O(1) free-list pool acquisition (replace .find(free) + Particles._get scan); ring-buffer trails (Bullet.trail / PowerUp.hist / Drone.hist); compact-in-place to kill .filter churn (asteroids/enemies/shooting-stars/toasts) + real pools for Asteroid/enemy classes; remaining per-frame gradients (powerup halo, asteroid body, Shockwave shadowBlur); then a real-browser FPS profile per tier."
+    ]
+  },
+
   "keySystems": {
     "metaProgression": {
       "credits": "Earned at run end: floor((score*0.015 + waves*8 + bosses*75) * difficulty.creditMul * dailyMul) (CONFIG.credits + Meta.award).",
@@ -186,7 +227,8 @@
   ],
 
   "roadmap": {
-    "primaryNext": "AAA VISUAL OVERHAUL — see forTheVisualsTeam. Gameplay systems are complete; this is the headline remaining pillar.",
+    "primaryNext": "PERFORMANCE OPTIMIZATION — see forTheOptimizationTeam. Lock the frame rate game-wide, finish pooling (free-lists for bullets/particles + real pools for asteroids/enemies), and kill per-frame allocations (shadowBlur, gradients, trail points, .filter churn) introduced by the visual pass. Gameplay + the AAA visual/juice pass are done; this is the headline remaining pillar.",
+    "completed": "AAA VISUAL OVERHAUL (phase 9) — delivered; see forTheVisualsTeam.statusNote.",
     "secondarySuggestions": [
       { "item": "Online / shared daily leaderboard", "why": "Daily best is local-only; a backend would make the seeded mode competitive.", "where": "daily.js + a service" },
       { "item": "More bosses / mini-bosses + attack 'step' types", "why": "The data-driven system makes this cheap.", "where": "boss.js BOSS_TYPES/MINIBOSS_TYPES + runStep" },
@@ -198,7 +240,7 @@
 
   "quickStartForNewDev": [
     "1. Open index.html in a browser — it just runs (no install).",
-    "2. Read README.md (player overview), then this handoff. If you're on visuals, read forTheVisualsTeam first.",
+    "2. Read README.md (player overview), then this handoff. If you're on PERFORMANCE, read forTheOptimizationTeam first (it pinpoints the hotspots); forTheVisualsTeam documents what the render layer does.",
     "3. Skim src/config.js (all knobs) and src/game.js (orchestrator); they anchor everything. For rendering, every entity's draw(c) + src/ui.js are your map.",
     "4. window.game in the console drives the live game (openSettings/openAchievements/newGame('daily')/spawn a Boss).",
     "5. Sanity-check edits with node --check src/*.js; for deeper checks reuse the Node-VM smoke technique under 'verification'.",

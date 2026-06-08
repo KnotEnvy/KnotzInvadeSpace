@@ -33,11 +33,23 @@ class Particle {
     const t = this.fade ? this.life / this.maxLife : 1;
     c.save();
     c.globalAlpha = Utils.clamp(t, 0, 1);
-    if (this.glow) { c.shadowColor = this.color; c.shadowBlur = this.glow; }
+    const size = this.size * (this.fade ? (0.4 + 0.6 * t) : 1);
+    // Soft additive glow via a pre-rendered blob sprite (no runtime shadowBlur
+    // — the single biggest per-frame cost during explosions). Falls back to
+    // shadowBlur when offscreen canvases aren't available.
+    if (this.glow) {
+      const blob = GlowSprites.blob(this.color);
+      if (blob) {
+        const gsz = size * 2 + this.glow * 2;
+        c.drawImage(blob, this.x - gsz / 2, this.y - gsz / 2, gsz, gsz);
+      } else {
+        c.shadowColor = this.color; c.shadowBlur = this.glow;
+      }
+    }
     c.fillStyle = this.color;
     if (this.shape === 'circle') {
       c.beginPath();
-      c.arc(this.x, this.y, this.size * (this.fade ? (0.4 + 0.6 * t) : 1), 0, Math.PI * 2);
+      c.arc(this.x, this.y, size, 0, Math.PI * 2);
       c.fill();
     } else if (this.shape === 'spark') {
       c.translate(this.x, this.y);

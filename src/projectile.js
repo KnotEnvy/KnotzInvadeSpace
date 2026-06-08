@@ -48,22 +48,38 @@ class Bullet {
 
     if (!this.friendly && Meta.fx()) {
       // Enemy fire reads as a glowing energy orb (more menacing than a rect).
+      // Pre-rendered once per colour, so no per-frame gradient/shadowBlur.
       const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
       const r = Math.max(this.width, this.height) * 0.62;
-      const g = c.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, '#fff');
-      g.addColorStop(0.35, this.color);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      c.shadowColor = this.color;
-      c.shadowBlur = 14;
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(cx, cy, r, 0, Math.PI * 2);
-      c.fill();
+      const orb = GlowSprites.orb(this.color);
+      if (orb) {
+        const d = (r + 14) * 2;
+        c.drawImage(orb, cx - d / 2, cy - d / 2, d, d);
+      } else {
+        const g = c.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, '#fff');
+        g.addColorStop(0.35, this.color);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.shadowColor = this.color;
+        c.shadowBlur = 14;
+        c.fillStyle = g;
+        c.beginPath();
+        c.arc(cx, cy, r, 0, Math.PI * 2);
+        c.fill();
+      }
     } else {
-      // Player/enemy bolt: bright white core inside a coloured glow.
-      c.shadowColor = this.color;
-      c.shadowBlur = 14;
+      // Player/enemy bolt: bright white core inside a coloured glow. The glow
+      // is an additive blob behind (stretched to the bolt's aspect) instead of
+      // a per-frame shadowBlur.
+      const blob = GlowSprites.blob(this.color);
+      if (blob) {
+        const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
+        const hw = this.width / 2 + 13, hh = this.height / 2 + 13;
+        c.drawImage(blob, cx - hw, cy - hh, hw * 2, hh * 2);
+      } else {
+        c.shadowColor = this.color;
+        c.shadowBlur = 14;
+      }
       c.fillStyle = this.color;
       c.fillRect(this.x - 1.5, this.y - 2, this.width + 3, this.height + 4);
       c.fillStyle = '#fff';
