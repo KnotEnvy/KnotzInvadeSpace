@@ -2,6 +2,10 @@
 .smoke/
 .tmp/
 
+# Claude Code harness runtime artifacts (locks, scheduled-task state)
+.claude/scheduled_tasks.lock
+.claude/*.lock
+
 # OS / editor cruft
 Thumbs.db
 .DS_Store
