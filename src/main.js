@@ -32,22 +32,57 @@ function loadAssets(onProgress, onDone) {
 
 function boot() {
   const canvas = document.getElementById('game');
+  const stage = document.getElementById('stage');
   const ctx = canvas.getContext('2d');
   canvas.width = CONFIG.WIDTH;
   canvas.height = CONFIG.HEIGHT;
   ctx.imageSmoothingEnabled = true;
 
-  // Scale the canvas element to fit the viewport while preserving ratio.
-  function resize() {
-    const ar = CONFIG.WIDTH / CONFIG.HEIGHT;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let w = vw, h = vw / ar;
-    if (h > vh) { h = vh; w = vh * ar; }
-    canvas.style.width = Math.round(w) + 'px';
-    canvas.style.height = Math.round(h) + 'px';
+  const hasTouch = ('ontouchstart' in window) ||
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);
+
+  // Size + place the canvas. The world is always 720x960; on touch devices
+  // whose viewport is taller than 3:4 (phones) the canvas gains a CONTROL
+  // DECK below the world (CONFIG.DECK_H design-px) so the touch clusters and
+  // bottom HUD live in the letterbox space instead of over the playfield.
+  // Driven by visualViewport so dynamic browser toolbars never cover the
+  // controls (the old 100vh sizing clipped the bottom of the canvas).
+  function layout() {
+    // available CSS box: stage minus its safe-area padding, never taller
+    // than the *visual* viewport (mobile toolbars shrink that first)
+    const cs = getComputedStyle(stage);
+    const sr = stage.getBoundingClientRect();
+    let vw = sr.width - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    let vh = sr.height - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    if (window.visualViewport) {
+      vw = Math.min(vw, window.visualViewport.width);
+      vh = Math.min(vh, window.visualViewport.height);
+    }
+    const scale = Math.min(vw / CONFIG.WIDTH, vh / CONFIG.HEIGHT);
+
+    let deck = 0;
+    const tc = (Meta.settings && Meta.settings.touchControls) || 'auto';
+    const touchOn = tc === 'on' || (tc === 'auto' && hasTouch);
+    if (touchOn && scale > 0) {
+      const leftover = vh / scale - CONFIG.HEIGHT;   // spare height, design-px
+      if (leftover >= CONFIG.deck.minH)
+        deck = Math.min(CONFIG.deck.maxH, Math.floor(leftover));
+    }
+    CONFIG.DECK_H = deck;
+    const H = CONFIG.HEIGHT + deck;
+    if (canvas.height !== H) {
+      canvas.height = H;                 // resets ctx state
+      ctx.imageSmoothingEnabled = true;
+    }
+    canvas.style.width = Math.round(CONFIG.WIDTH * scale) + 'px';
+    canvas.style.height = Math.round(H * scale) + 'px';
   }
-  window.addEventListener('resize', resize);
-  resize();
+  window.__kisLayout = layout;           // re-run when touchControls changes
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', layout);
+  if (window.visualViewport)
+    window.visualViewport.addEventListener('resize', layout);
+  layout();
 
   // --- loading screen ---
   let progress = 0;
@@ -61,7 +96,7 @@ function boot() {
     const g = ctx.createRadialGradient(CONFIG.WIDTH / 2, CONFIG.HEIGHT * 0.42, 60, CONFIG.WIDTH / 2, CONFIG.HEIGHT * 0.42, CONFIG.HEIGHT * 0.7);
     g.addColorStop(0, '#0c1230'); g.addColorStop(1, '#05060f');
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    ctx.fillRect(0, 0, canvas.width, canvas.height); // incl. the control deck
     const now = performance.now();
     ctx.save();
     ctx.fillStyle = '#bfe9ff';
@@ -118,7 +153,7 @@ function boot() {
           steps++;
         }
         if (steps === 5) acc = 0; // avoid spiral of death
-        ctx.clearRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         game.draw(ctx);
         requestAnimationFrame(frame);
       }

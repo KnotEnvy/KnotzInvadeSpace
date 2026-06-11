@@ -160,6 +160,7 @@ const CONFIG = {
     shake: true, reducedMotion: false, difficulty: 'normal',
     touchControls: 'auto',   // 'auto' (show on touch devices) | 'on' | 'off'
     quality: 'high',         // graphics tier: 'low' | 'medium' | 'high' (see CONFIG.quality)
+    haptics: true,           // vibration feedback on touch devices (navigator.vibrate)
   },
 
   // Graphics quality tiers. The render layer (post-processing bloom +
@@ -181,6 +182,15 @@ const CONFIG = {
 
   // On-screen touch button layout (design-space rects, mirrored by Input + UI).
   touch: { pad: 22, gap: 16, size: 96, bottom: 152 },
+
+  // Mobile CONTROL DECK: on touch devices whose viewport is taller than the
+  // 3:4 world (i.e. phones), main.js layout() extends the canvas below the
+  // 720x960 world by DECK_H design-px and the touch clusters + bottom HUD
+  // (lives / energy / pause) move into that band — OFF the playfield.
+  // DECK_H is RUNTIME state (0 = no deck -> classic overlay buttons);
+  // deck.minH/maxH bound how much letterbox space is claimed.
+  DECK_H: 0,
+  deck: { minH: 132, maxH: 230 },
 
   // Difficulty presets. Multipliers fan out across enemy aggression, speed,
   // boss durability/fire cadence, the credit payout and starting lives.

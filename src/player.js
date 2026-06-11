@@ -163,12 +163,14 @@ class Player {
     this.game.shake(16, 360);
     this.game.freeze(55);
     Sound.playerHit();
+    Utils.buzz(40);
     if (this.lives <= 0) {
       this.alive = false;
       this.game.particles.explosionBig(cx, cy, '#fff', 'fire', 2);
       this.game.shake(22, 480);
       this.game.freeze(110);
       this.game.punchZoom(0.04);
+      Utils.buzz([60, 40, 90]);
     }
     return false;
   }

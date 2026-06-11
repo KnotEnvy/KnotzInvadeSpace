@@ -23,6 +23,10 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* keep the canvas clear of notches / home bars (viewport-fit=cover);
+     main.js layout() measures the box inside this padding */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
 #game {
@@ -36,8 +40,12 @@ html, body {
     0 20px 60px rgba(0, 0, 0, 0.7);
   touch-action: none;
   image-rendering: auto;
+  /* JS sizes the element from the visual viewport; these are a backstop.
+     dvh tracks mobile browsers' dynamic toolbars (100vh used to let the
+     toolbar cover the bottom of the canvas — the touch controls). */
   max-width: 100vw;
   max-height: 100vh;
+  max-height: 100dvh;
 }
 
 /* Visually hidden but available to crawlers and screen readers. */

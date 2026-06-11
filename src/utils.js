@@ -104,6 +104,15 @@ const Utils = {
     c.restore();
   },
 
+  // Haptic feedback (mobile). Gated by the haptics setting; silently no-ops
+  // where navigator.vibrate doesn't exist (desktop, iOS).
+  buzz(ms) {
+    try {
+      if (typeof Meta !== 'undefined' && Meta.settings && Meta.settings.haptics === false) return;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(ms);
+    } catch (_) { /* vibration blocked — fine */ }
+  },
+
   // Rounded-rectangle path helper.
   roundRect(c, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);

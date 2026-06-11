@@ -19,9 +19,15 @@ class MetaProfile {
   constructor() { this.data = this.load(); }
 
   load() {
+    // Fresh profiles on touch hardware default to Medium graphics — phone
+    // GPUs pay for High's bloom; players can always raise it in Settings.
+    // (Existing saves keep whatever the player chose.)
+    const touchDevice = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+      (typeof window !== 'undefined' && 'ontouchstart' in window);
     const def = {
       version: CONFIG.saveVersion, hi: 0, credits: 0, upgrades: {}, muted: false,
-      settings: { ...CONFIG.settings }, achievements: {}, daily: {},
+      settings: { ...CONFIG.settings, ...(touchDevice ? { quality: 'medium' } : {}) },
+      achievements: {}, daily: {},
       campaign: { best: 0, wins: 0 },
     };
     try {
@@ -60,10 +66,13 @@ class MetaProfile {
     this.applySettings();
   }
   // Push audio-affecting settings onto the live engine. Called at boot and
-  // whenever a slider changes (other settings are read on demand).
+  // whenever a slider changes (other settings are read on demand). Also
+  // re-runs the canvas layout so toggling touchControls adds/removes the
+  // mobile control deck immediately.
   applySettings() {
     const s = this.data.settings;
     Sound.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
+    if (typeof window !== 'undefined' && window.__kisLayout) window.__kisLayout();
   }
   shakeEnabled()  { return this.data.settings.shake !== false && !this.reducedMotion(); }
   reducedMotion() { return !!this.data.settings.reducedMotion; }

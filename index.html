@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Knotz: Invade Space — Free Browser Space Shooter Roguelite</title>
   <meta name="description" content="Steal an alien ship and fight home through 5 sectors to save Earth. A free story-driven Space Invaders roguelite — play instantly in your browser, no install.">
   <link rel="canonical" href="https://knotenvy.github.io/KnotzInvadeSpace/">
@@ -27,9 +27,10 @@
   <meta name="twitter:image" content="https://knotenvy.github.io/KnotzInvadeSpace/assets/og-card-v2.png">
   <meta name="twitter:image:alt" content="Knotz: Invade Space — a starfighter battles an alien boss over Earth. Play free in your browser.">
 
-  <!-- icons -->
+  <!-- icons + PWA (installable, plays offline once visited over https) -->
   <link rel="icon" type="image/png" sizes="64x64" href="assets/icon-64.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
 
   <!-- structured data: tells search engines this is a free browser game -->
   <script type="application/ld+json">
@@ -98,5 +99,13 @@
   <script src="src/settings.js"></script>
   <script src="src/game.js"></script>
   <script src="src/main.js"></script>
+  <script>
+    // PWA service worker (offline play + install). https only — the
+    // double-click file:// workflow never registers one.
+    if ('serviceWorker' in navigator && location.protocol === 'https:')
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+  </script>
 </body>
 </html>

@@ -27,16 +27,40 @@ class Input {
   }
 
   // Design-space rect for an on-screen button (shared by Input + UI).
+  // Two layouts: with a control deck (CONFIG.DECK_H > 0, phones) the
+  // clusters live in the band below the world with bigger thumb targets;
+  // without one (tablets / landscape) they overlay the playfield as before.
   buttonRect(kind) {
-    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, t = CONFIG.touch;
+    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, t = CONFIG.touch, d = CONFIG.DECK_H;
+    if (d > 0) {
+      // size bounded by the deck height AND the centre column (pause/lives/
+      // energy) needing ~170px between the clusters.
+      const s = Utils.clamp(d - 20, 88, 124);
+      const by = H + (d - s) / 2;
+      switch (kind) {
+        case 'left':  return { x: 16, y: by, w: s, h: s };
+        case 'right': return { x: 16 + s + 10, y: by, w: s, h: s };
+        case 'fire':  return { x: W - 16 - s, y: by, w: s, h: s };
+        case 'beam':  return { x: W - 16 - s - 10 - s, y: by, w: s, h: s };
+        case 'pause': return { x: W / 2 - 30, y: H + (d - 110) / 2, w: 60, h: 46 };
+      }
+      return { x: 0, y: 0, w: 0, h: 0 };
+    }
     const by = H - t.bottom;
     switch (kind) {
       case 'left':  return { x: t.pad, y: by, w: t.size, h: t.size };
       case 'right': return { x: t.pad + t.size + t.gap, y: by, w: t.size, h: t.size };
       case 'fire':  return { x: W - t.pad - t.size, y: by, w: t.size, h: t.size };
       case 'beam':  return { x: W - t.pad - t.size, y: by - t.size - t.gap, w: t.size, h: t.size };
+      case 'pause': return { x: W / 2 - 30, y: 10, w: 60, h: 44 };
     }
     return { x: 0, y: 0, w: 0, h: 0 };
+  }
+
+  // Is the pointer's last position inside this design-space rect?
+  pointerIn(r) {
+    const p = this.pointer;
+    return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   }
   _touchOn(kind) {
     if (!this.buttonsActive()) return false;
@@ -59,13 +83,28 @@ class Input {
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       this.keys.delete(k);
     });
-    window.addEventListener('blur', () => { this.keys.clear(); this.touches.clear(); });
+    // A backgrounded / interrupted page can never come back with phantom
+    // held keys or touches (stuck controls used to need a full refresh).
+    const dropAll = () => {
+      this.keys.clear();
+      this.touches.clear();
+      this.pointer.active = false; this.pointer.fire = false;
+    };
+    window.addEventListener('blur', dropAll);
+    window.addEventListener('pagehide', dropAll);
+    if (typeof document !== 'undefined' && document.addEventListener)
+      document.addEventListener('visibilitychange', () => { if (document.hidden) dropAll(); });
 
+    // Map client coords into the canvas's design space. Uses the canvas's
+    // REAL pixel size (world + control deck), not CONFIG.HEIGHT, so deck
+    // buttons below y=960 are reachable.
     const toCanvas = (clientX, clientY) => {
       const r = this.canvas.getBoundingClientRect();
+      const dw = this.canvas.width || CONFIG.WIDTH;
+      const dh = this.canvas.height || CONFIG.HEIGHT;
       return {
-        x: (clientX - r.left) / r.width * CONFIG.WIDTH,
-        y: (clientY - r.top) / r.height * CONFIG.HEIGHT,
+        x: (clientX - r.left) / r.width * dw,
+        y: (clientY - r.top) / r.height * dh,
       };
     };
 
@@ -92,21 +131,39 @@ class Input {
     this.canvas.addEventListener('mousemove', (e) => moveTo('mouse', e.clientX, e.clientY));
     window.addEventListener('mouseup', () => release('mouse'));
 
-    // Touch (multi-pointer).
+    // Touch (multi-pointer). The touch set is rebuilt from e.touches — the
+    // browser's authoritative list of CURRENTLY-down touches — on every
+    // event, instead of tracking changedTouches incrementally. A missed
+    // touchend (system gesture, notification shade, dialog) therefore can
+    // never strand a phantom "held" touch that freezes the controls.
+    const syncTouches = (e) => {
+      for (const id of this.touches.keys())
+        if (id !== 'mouse') this.touches.delete(id);
+      for (const t of e.touches)
+        this.touches.set(t.identifier, toCanvas(t.clientX, t.clientY));
+      if (this.touches.size === 0) { this.pointer.active = false; this.pointer.fire = false; }
+    };
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      for (const t of e.changedTouches) press(t.identifier, t.clientX, t.clientY);
+      syncTouches(e);
+      for (const t of e.changedTouches) {
+        const p = toCanvas(t.clientX, t.clientY);
+        this.pointer.x = p.x; this.pointer.y = p.y; this.pointer.clicked = true;
+        if (!this.buttonsActive()) { this.pointer.active = true; this.pointer.fire = true; }
+      }
     }, { passive: false });
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      for (const t of e.changedTouches) moveTo(t.identifier, t.clientX, t.clientY);
+      syncTouches(e);
+      const t = e.changedTouches[e.changedTouches.length - 1];
+      if (t) { const p = toCanvas(t.clientX, t.clientY); this.pointer.x = p.x; this.pointer.y = p.y; }
     }, { passive: false });
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      for (const t of e.changedTouches) release(t.identifier);
+      syncTouches(e);
     }, { passive: false });
     this.canvas.addEventListener('touchcancel', (e) => {
-      for (const t of e.changedTouches) release(t.identifier);
+      syncTouches(e);
     }, { passive: false });
   }
 

@@ -57,21 +57,26 @@ No install, no sign-up. Runs on desktop and mobile.
 - **Scalable visuals** — offscreen threshold **bloom**, hit-stop, zoom-punch and
   textured explosions, with **Low / Medium / High** graphics tiers (and
   reduced-motion + screen-shake toggles) so it stays smooth on weak hardware.
+- **Built for mobile** — on phones the canvas extends into a dedicated **control
+  deck** below the playfield: big move / fire / beam buttons plus your lives,
+  energy and a pause button, so nothing covers the action. Every menu is
+  tappable, and it's an **installable PWA** that **plays offline** after your
+  first visit.
 - **Plays everywhere** — keyboard *and* mouse/touch controls; the canvas scales
   to fit any screen. High score is saved locally.
 
 ## 🎮 Controls
 
-| Action       | Keys                          | Touch / Mouse        |
-|--------------|-------------------------------|----------------------|
-| Move         | `←` `→` or `A` `D`            | Drag                 |
-| Fire         | `Space`                       | Tap & hold           |
-| Energy Beam  | `Shift` or `X`                | —                    |
-| Pause        | `Esc` or `P`                  | —                    |
-| Mute sound   | `M`                           | —                    |
-| Start / Retry| `Enter`                       | Tap                  |
-| Hangar       | `H` (menu / game over)        | Tap rows to buy      |
-| Quit to menu | `Q` (when paused / game over) | —                    |
+| Action       | Keys                          | Touch / Mouse                       |
+|--------------|-------------------------------|-------------------------------------|
+| Move         | `←` `→` or `A` `D`            | On-screen `◀` `▶` (or drag)         |
+| Fire         | `Space`                       | `FIRE` button (or tap & hold)       |
+| Energy Beam  | `Shift` or `X`                | `BEAM` button                       |
+| Pause        | `Esc` or `P`                  | `⏸` button                          |
+| Mute sound   | `M`                           | Sound button on the menu            |
+| Start / Retry| `Enter`                       | Tap `LAUNCH` / `PLAY AGAIN`         |
+| Hangar       | `H` (menu / game over)        | Tap the button; tap rows to buy     |
+| Quit to menu | `Q` (when paused / game over) | Tap `QUIT` / `MENU`                 |
 
 **Tip:** chain kills quickly to build a combo multiplier (up to ×8) for huge scores,
 and grab the guaranteed power-up shower after each boss.
@@ -115,6 +120,7 @@ scripts (so it runs straight from the file system — no bundler required):
 | File | Responsibility |
 |------|----------------|
 | `index.html` / `styles.css` | Page shell + canvas; everything else renders to canvas |
+| `manifest.webmanifest` / `sw.js` | PWA install + offline play (registered over https only) |
 | `src/config.js`   | All tunables, palette and the asset manifest |
 | `src/utils.js`    | Math, collision (AABB), text/draw helpers + zero-alloc `Trail` ring buffer |
 | `src/glowatlas.js`| Pre-rendered glow sprite cache (perf: replaces per-frame `shadowBlur`) |

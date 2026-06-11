@@ -26,6 +26,7 @@ class SettingsMenu {
       { key: 'quality',       type: 'cycle',  label: 'GRAPHICS', options: ['low', 'medium', 'high'] },
       { key: 'difficulty',    type: 'cycle',  label: 'DIFFICULTY', options: ['easy', 'normal', 'hard'] },
       { key: 'touchControls', type: 'cycle',  label: 'TOUCH CONTROLS', options: ['auto', 'on', 'off'] },
+      { key: 'haptics',       type: 'toggle', label: 'HAPTICS (VIBRATION)' },
       { type: 'back', label: '◀  BACK' },
     ];
   }

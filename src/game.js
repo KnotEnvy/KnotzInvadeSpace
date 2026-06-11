@@ -71,6 +71,7 @@ class Game {
     this.newDailyBest = false;
     this.gameOverPending = false;
     this.deathTimer = 0;
+    this.goGuard = 0;       // ms during which game-over ignores taps
     this.creditsEarned = 0;
     this.freezeTimer = 0;   // hit-stop (real-time; skips sim steps, see update)
     this.punch = 0;         // brief zoom-in punch on big impacts
@@ -239,6 +240,7 @@ class Game {
   endGame() {
     this.state = 'gameover';
     this.ui.goT = 0;          // restart the victory-epilogue fade-in
+    this.goGuard = 700;       // swallow taps still raining from the fight
     Sound.stopMusic();
     if (this.victory) Sound.extraLife(); else Sound.gameOver();
     if (this.score > Meta.hi) { Meta.hi = this.score; this.newHiScore = true; }
@@ -357,6 +359,7 @@ class Game {
     }
 
     this.bossesSlain++;
+    Utils.buzz([50, 60, 50]);
     Ach.onBossKill(boss.def, this.bossHitless);
     for (let i = 0; i < 4; i++)
       this.spawnPowerUp(boss.x + Utils.rand(0, boss.width), boss.y + Utils.rand(0, boss.height));
@@ -497,6 +500,7 @@ class Game {
     this.particles.shockwave(cx, cy, CONFIG.colors.gold, { r0: 20, r1: CONFIG.WIDTH * 0.9, life: 640, lw: 6 });
     this.particles.shockwave(cx, cy, '#fff', { r0: 8, r1: CONFIG.WIDTH * 0.6, life: 470, lw: 3 });
     Sound.bigExplode();
+    Utils.buzz(70);
     this.enemyBullets.forEach(b => b.free = true);
     for (const wave of this.waves)
       for (const e of wave.enemies)
@@ -624,6 +628,7 @@ class Game {
     if (this.state === 'hangar' || this.state === 'dock') this.hangar.update(dt);
     if (this.state === 'settings') this.settings.update(dt);
     if (this.flashT > 0) this.flashT -= dt; else this.flashDur = 1;
+    if (this.goGuard > 0 && this.state === 'gameover') this.goGuard -= dt;
     // Warp streaks while a campaign briefing is up, and as the post-boss
     // loot window winds down (the jump spooling up); settle back otherwise.
     const warping = this.state === 'briefing' ||
@@ -787,8 +792,7 @@ class Game {
         else if (i.wasPressed('o')) { Sound.init(); this.openSettings('menu'); }
         else if (i.wasPressed('a')) { Sound.init(); this.openAchievements('menu'); }
         else if (clicked) {
-          const hit = (this.ui.menuRects || []).find(r =>
-            i.pointer.x >= r.x && i.pointer.x <= r.x + r.w && i.pointer.y >= r.y && i.pointer.y <= r.y + r.h);
+          const hit = this._hitMenuRect(i);
           if (hit) {
             Sound.init();
             if (hit.kind === 'mode') { this.menuMode = hit.index; Sound.uiMove(); }
@@ -796,6 +800,8 @@ class Game {
             else if (hit.kind === 'hangar') this.openHangar();
             else if (hit.kind === 'settings') this.openSettings('menu');
             else if (hit.kind === 'achievements') this.openAchievements('menu');
+            else if (hit.kind === 'mute') { Sound.setMuted(!Sound.muted); Meta.muted = Sound.muted; }
+            else if (hit.kind === 'fullscreen') this.toggleFullscreen();
           }
         } else if (i.wasPressed('Enter', ' ')) { Sound.init(); Sound.uiSelect(); this.newGame(modes[this.menuMode].id); }
         break;
@@ -810,7 +816,9 @@ class Game {
       case 'achievements':
         if (i.wasPressed('Enter', ' ', 'Escape', 'q') || clicked) this.closeAchievements();
         break;
-      case 'briefing':
+      case 'briefing': {
+        const hit = clicked ? this._hitMenuRect(i) : null;
+        if (hit && hit.kind === 'abort') { this.toMenu(); break; }
         if (i.wasPressed('Enter', ' ') || clicked) {
           Sound.init();
           // first press fast-forwards the typewriter, the next one launches
@@ -819,24 +827,78 @@ class Game {
         }
         else if (i.wasPressed('q', 'Escape')) this.toMenu();
         break;
+      }
       case 'playing':
-        if (i.wasPressed('Escape', 'p')) { this.state = 'paused'; Sound.stopMusic(); Sound.uiSelect(); }
+        if (i.wasPressed('Escape', 'p') ||
+            (clicked && i.buttonsActive() && i.pointerIn(i.buttonRect('pause')))) {
+          this.state = 'paused'; Sound.stopMusic(); Sound.uiSelect();
+        }
         break;
-      case 'paused':
-        if (i.wasPressed('Escape', 'p')) { this.state = 'playing'; Sound.startMusic(this._tempo()); }
+      case 'paused': {
+        const resume = () => { this.state = 'playing'; Sound.startMusic(this._tempo()); Sound.uiSelect(); };
+        if (i.wasPressed('Escape', 'p')) resume();
         else if (i.wasPressed('o')) this.openSettings('paused');
         else if (i.wasPressed('q')) this.toMenu();
+        else if (clicked) {
+          if (i.buttonsActive() && i.pointerIn(i.buttonRect('pause'))) { resume(); break; }
+          const hit = this._hitMenuRect(i);
+          if (hit) {
+            if (hit.kind === 'resume') resume();
+            else if (hit.kind === 'settings') this.openSettings('paused');
+            else if (hit.kind === 'quitmenu') this.toMenu();
+          }
+        }
         break;
-      case 'gameover':
-        if (i.wasPressed('Enter') || clicked) { Sound.uiSelect(); this.newGame(); }
+      }
+      case 'gameover': {
+        // taps are ignored briefly after death so a still-held FIRE finger
+        // can't skip the results screen (this used to instantly restart)
+        const tap = clicked && this.goGuard <= 0;
+        if (tap) {
+          const hit = this._hitMenuRect(i);
+          if (hit) {
+            Sound.uiSelect();
+            if (hit.kind === 'again') this.newGame();
+            else if (hit.kind === 'hangar') this.openHangar();
+            else if (hit.kind === 'settings') this.openSettings('gameover');
+            else if (hit.kind === 'achievements') this.openAchievements('gameover');
+            else if (hit.kind === 'menu') this.toMenu();
+          }
+        }
+        else if (i.wasPressed('Enter')) { Sound.uiSelect(); this.newGame(); }
         else if (i.wasPressed('h')) this.openHangar();
         else if (i.wasPressed('o')) this.openSettings('gameover');
         else if (i.wasPressed('a')) this.openAchievements('gameover');
         else if (i.wasPressed('q')) this.toMenu();
         break;
+      }
     }
 
     this.input.consumePressed();
+  }
+
+  // The UI screen drawn last frame rebuilt ui.menuRects with tagged hit
+  // areas; find the one under the pointer (shared by every clickable state).
+  _hitMenuRect(i) {
+    return (this.ui.menuRects || []).find(r =>
+      i.pointer.x >= r.x && i.pointer.x <= r.x + r.w &&
+      i.pointer.y >= r.y && i.pointer.y <= r.y + r.h);
+  }
+
+  // Browser fullscreen (menu button, touch devices). Best-effort orientation
+  // lock to portrait once we're in. No-ops where unsupported (iOS Safari).
+  toggleFullscreen() {
+    if (typeof document === 'undefined') return;
+    try {
+      if (document.fullscreenElement) { document.exitFullscreen(); return; }
+      const el = document.documentElement;
+      if (!el.requestFullscreen) return;
+      const p = el.requestFullscreen();
+      if (p && p.then) p.then(() => {
+        if (typeof screen !== 'undefined' && screen.orientation && screen.orientation.lock)
+          screen.orientation.lock('portrait').catch(() => {});
+      }).catch(() => {});
+    } catch (_) { /* fullscreen denied — fine */ }
   }
 
   // --- rendering ----------------------------------------------------------
@@ -887,7 +949,9 @@ class Game {
       Ach.drawScreen(c);
     } else {
       this.ui.drawHUD(c);
-      if ((this.state === 'playing' || this.state === 'paused') && this.input.buttonsActive())
+      // overlay buttons only when there's no control deck (deck draws its own)
+      if ((this.state === 'playing' || this.state === 'paused') &&
+          this.input.buttonsActive() && CONFIG.DECK_H === 0)
         this.ui.drawTouchControls(c, this.input);
       if (this.banner) {
         const b = this.banner;
@@ -896,6 +960,9 @@ class Game {
       if (this.state === 'paused') this.ui.drawPause(c);
       if (this.state === 'gameover') this.ui.drawGameOver(c);
     }
+
+    // Mobile control deck — the band below the world (no-op when DECK_H=0).
+    this.ui.drawDeck(c);
 
     // Warp-arrival flash washes over everything for a few frames.
     if (this.flashT > 0) {

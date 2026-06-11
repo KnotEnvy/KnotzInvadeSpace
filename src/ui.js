@@ -199,37 +199,71 @@ class UI {
     }
 
     // --- bottom HUD strip ---
+    // With a control deck (phones) the lives / energy / pause readouts live
+    // in the deck (drawDeck) so the playfield stays clear; without one they
+    // overlay the bottom of the world as before.
+    const deck = CONFIG.DECK_H > 0;
     const baseY = CONFIG.HEIGHT - 30;
 
-    // lives — the last life pulses red as a danger tell
-    const lowLife = g.player.alive && g.player.lives <= 1;
+    if (!deck) {
+      this._drawLives(c, 30, baseY, 22, 1.1, 'left');
+      const ew = 200, ex = CONFIG.WIDTH - ew - 24, ey = baseY - 6;
+      this._energyBar(c, ex, ey, ew, 12);
+      Utils.text(c, 'BEAM', ex - 8, ey + 11, { size: 11, color: '#9fb3d1', align: 'right' });
+      // on-playfield pause chip (touch overlay mode only)
+      if (g.state === 'playing' && g.input.buttonsActive())
+        this._pauseChip(c, g.input.buttonRect('pause'), false);
+    }
+
+    // active power-up chips (bottom-left)
+    const chips = [];
+    if (g.player.rapid) chips.push(['RAPID', g.player.rapidTimer, CONFIG.colors.accent]);
+    if (g.player.spread) chips.push(['SPREAD', g.player.spreadTimer, CONFIG.colors.good]);
+    if (g.player.shield > 0) chips.push(['SHIELD x' + g.player.shield, 1, CONFIG.colors.accent2]);
+    chips.forEach((ch, i) => {
+      const x = 30, y = deck ? baseY - i * 18 : baseY - 34 - i * 18;
+      Utils.text(c, ch[0], x, y, { size: 12, color: ch[2], glow: 6 });
+    });
+
+    // story comms (campaign chatter) float above the bottom strip
+    this.drawComms(c);
+  }
+
+  // Lives row — the last life pulses red as a danger tell. align 'left'
+  // anchors at x; 'center' centres the row of maxLives icons on x.
+  _drawLives(c, x, y, step, scale, align = 'left') {
+    const p = this.game.player;
+    const x0 = align === 'center' ? x - (p.maxLives - 1) * step / 2 : x;
+    const lowLife = p.alive && p.lives <= 1;
     const lifePulse = 0.6 + 0.4 * Math.sin(Date.now() / 140);
-    for (let i = 0; i < g.player.maxLives; i++) {
-      const filled = i < g.player.lives;
+    for (let i = 0; i < p.maxLives; i++) {
+      const filled = i < p.lives;
       let col = filled ? CONFIG.colors.accent : 'rgba(255,255,255,0.15)';
       if (filled && lowLife) col = CONFIG.colors.danger;
       c.save();
       if (filled && lowLife) c.globalAlpha = lifePulse;
-      this.shipIcon(c, 30 + i * 22, baseY, 1.1, col);
+      this.shipIcon(c, x0 + i * step, y, scale, col);
       c.restore();
     }
+  }
 
-    // energy bar (bottom-right) with a travelling shimmer
-    const ew = 200, eh = 12, ex = CONFIG.WIDTH - ew - 24, ey = baseY - 6;
+  // Beam-energy bar with a travelling shimmer (HUD strip + control deck).
+  _energyBar(c, ex, ey, ew, eh) {
+    const g = this.game;
     c.save();
-    Utils.roundRect(c, ex, ey, ew, eh, 6);
+    Utils.roundRect(c, ex, ey, ew, eh, eh / 2);
     c.fillStyle = 'rgba(0,0,0,0.5)';
     c.fill();
     const pct = g.player.energy / g.player.maxEnergy;
     const col = g.player.cooldown ? CONFIG.colors.danger : CONFIG.colors.gold;
-    Utils.roundRect(c, ex, ey, ew * pct, eh, 6);
+    Utils.roundRect(c, ex, ey, ew * pct, eh, eh / 2);
     c.fillStyle = col;
     c.shadowColor = col;
     c.shadowBlur = 10;
     c.fill();
     if (pct > 0.02 && !g.player.cooldown) {
       // shimmer sweep
-      Utils.roundRect(c, ex, ey, ew * pct, eh, 6);
+      Utils.roundRect(c, ex, ey, ew * pct, eh, eh / 2);
       c.clip();
       const sx = ex + ((Date.now() / 7) % (ew + 60)) - 30;
       const sh = c.createLinearGradient(sx - 24, 0, sx + 24, 0);
@@ -241,20 +275,66 @@ class UI {
       c.fillRect(sx - 24, ey, 48, eh);
     }
     c.restore();
-    Utils.text(c, 'BEAM', ex - 8, ey + 11, { size: 11, color: '#9fb3d1', align: 'right' });
+  }
 
-    // active power-up chips (above the lives)
-    const chips = [];
-    if (g.player.rapid) chips.push(['RAPID', g.player.rapidTimer, CONFIG.colors.accent]);
-    if (g.player.spread) chips.push(['SPREAD', g.player.spreadTimer, CONFIG.colors.good]);
-    if (g.player.shield > 0) chips.push(['SHIELD x' + g.player.shield, 1, CONFIG.colors.accent2]);
-    chips.forEach((ch, i) => {
-      const x = 30, y = baseY - 34 - i * 18;
-      Utils.text(c, ch[0], x, y, { size: 12, color: ch[2], glow: 6 });
-    });
+  // Small pause/resume chip (vector icon — emoji glyphs render inconsistently
+  // across mobile browsers). Geometry comes from Input.buttonRect('pause').
+  _pauseChip(c, r, paused) {
+    c.save();
+    c.globalAlpha = 0.85;
+    Utils.roundRect(c, r.x, r.y, r.w, r.h, 12);
+    c.fillStyle = 'rgba(20,28,48,0.85)';
+    c.fill();
+    c.lineWidth = 2;
+    c.strokeStyle = 'rgba(70,224,255,0.55)';
+    c.stroke();
+    c.fillStyle = '#cfe6ff';
+    const mx = r.x + r.w / 2, my = r.y + r.h / 2;
+    if (paused) {
+      c.beginPath();
+      c.moveTo(mx - 5, my - 9); c.lineTo(mx + 9, my); c.lineTo(mx - 5, my + 9);
+      c.closePath(); c.fill();
+    } else {
+      c.fillRect(mx - 9, my - 9, 6, 18);
+      c.fillRect(mx + 3, my - 9, 6, 18);
+    }
+    c.restore();
+  }
 
-    // story comms (campaign chatter) float above the bottom strip
-    this.drawComms(c);
+  // The mobile CONTROL DECK — the band below the 720x960 world (height
+  // CONFIG.DECK_H, sized by main.js layout()). In play states it holds the
+  // touch clusters plus pause / lives / energy so controls and thumbs stay
+  // OFF the playfield; in other states it's a quiet cabinet panel. Drawn in
+  // EVERY state so the band never reads as dead pixels.
+  drawDeck(c) {
+    const g = this.game, d = CONFIG.DECK_H;
+    if (d <= 0) return;
+    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT;
+    c.save();
+    const bg = c.createLinearGradient(0, H, 0, H + d);
+    bg.addColorStop(0, '#0b1024');
+    bg.addColorStop(1, '#04050d');
+    c.fillStyle = bg;
+    c.fillRect(0, H, W, d);
+    c.fillStyle = 'rgba(70,224,255,0.35)';
+    c.fillRect(0, H, W, 1.5);
+    c.restore();
+
+    const inPlay = g.state === 'playing' || g.state === 'paused';
+    if (!inPlay) {
+      Utils.text(c, 'KNOTZ : INVADE SPACE', W / 2, H + d / 2 + 5, {
+        size: 12, color: 'rgba(159,179,209,0.5)', align: 'center', spacing: 4 });
+      return;
+    }
+
+    if (g.input.buttonsActive()) this.drawTouchControls(c, g.input);
+
+    // centre column between the thumb clusters: pause chip, lives, energy
+    const pr = g.input.buttonRect('pause');
+    this._pauseChip(c, pr, g.state === 'paused');
+    const ly = pr.y + pr.h + 18;
+    this._drawLives(c, W / 2, ly, 20, 1.0, 'center');
+    this._energyBar(c, W / 2 - 70, ly + 14, 140, 10);
   }
 
   // The active comm line: a small transmission card with the speaker's name
@@ -270,7 +350,10 @@ class UI {
     const w = 480, x = (CONFIG.WIDTH - w) / 2;
     const lines = this._wrap(c, m.text, w - 30, 14.5);
     const h = 34 + lines.length * 18;
-    const y = CONFIG.HEIGHT - (this.game.input.buttonsActive() ? 286 : 184) - h;
+    // lift clear of the on-screen buttons only when they OVERLAY the world
+    // (with a control deck the buttons live below the playfield)
+    const overlayBtns = this.game.input.buttonsActive() && CONFIG.DECK_H === 0;
+    const y = CONFIG.HEIGHT - (overlayBtns ? 286 : 184) - h;
     c.save();
     c.globalAlpha = 0.85 * a;
     Utils.roundRect(c, x, y, w, h, 9);
@@ -300,11 +383,12 @@ class UI {
       ['beam',  'BEAM', input.beam,  CONFIG.colors.accent],
       ['fire',  'FIRE', input.fire,  CONFIG.colors.gold],
     ];
+    const deck = CONFIG.DECK_H > 0;   // deck buttons sit off-field: bigger, bolder
     c.save();
     for (const [kind, glyph, on, col] of btns) {
       const r = input.buttonRect(kind);
-      const radius = (kind === 'left' || kind === 'right') ? r.w / 2 : 16;
-      c.globalAlpha = on ? 0.55 : 0.26;
+      const radius = (kind === 'left' || kind === 'right') ? r.w / 2 : (deck ? 22 : 16);
+      c.globalAlpha = on ? 0.62 : (deck ? 0.42 : 0.26);
       Utils.roundRect(c, r.x, r.y, r.w, r.h, radius);
       c.fillStyle = on ? col : 'rgba(20,28,48,0.82)';
       c.lineWidth = 2.5;
@@ -314,8 +398,9 @@ class UI {
       c.stroke();
       c.shadowBlur = 0;
       const multi = glyph.length > 1;
-      Utils.text(c, glyph, r.x + r.w / 2, r.y + r.h / 2 + (multi ? 5 : 11), {
-        size: multi ? 16 : 34, color: '#fff', align: 'center', alpha: on ? 1 : 0.8,
+      const gs = multi ? (deck ? 19 : 16) : (deck ? 42 : 34);
+      Utils.text(c, glyph, r.x + r.w / 2, r.y + r.h / 2 + (multi ? gs * 0.32 : gs * 0.33), {
+        size: gs, color: '#fff', align: 'center', alpha: on ? 1 : 0.85,
       });
     }
     c.restore();
@@ -426,9 +511,17 @@ class UI {
     Utils.text(c, '◈ ' + Utils.commas(Meta.credits) + ' CREDITS', cx, 770, {
       size: 15, color: CONFIG.colors.accent, align: 'center', glow: 6,
     });
-    Utils.text(c, Sound.muted ? '🔇 SOUND OFF  (M)' : '🔊 SOUND ON  (M)', cx, 840, {
-      size: 13, color: '#9fb3d1', align: 'center',
-    });
+    // sound toggle is a real button now (M was keyboard-only — touch players
+    // had no way to mute)
+    this._menuButton(c, cx - 120, 818, 240, 36,
+      Sound.muted ? '🔇 SOUND OFF  (M)' : '🔊 SOUND ON  (M)', 'mute', null,
+      { size: 13, color: '#9fb3d1' });
+    // fullscreen for touch devices (hidden where the API is unavailable, e.g.
+    // iOS Safari — there, "Add to Home Screen" installs the PWA instead)
+    if (this.game.input.hasTouch && typeof document !== 'undefined' && document.fullscreenEnabled) {
+      this._menuButton(c, cx - 120, 864, 240, 36, '⛶  FULLSCREEN', 'fullscreen', null,
+        { size: 13, color: CONFIG.colors.accent });
+    }
   }
 
   // --- campaign sector briefing (the 'briefing' state) ---------------------
@@ -442,6 +535,8 @@ class UI {
     const cx = CONFIG.WIDTH / 2;
     this.menuPulse += 0.05;
     this.vignette(c);
+    this.menuRects = [];
+    this._menuButton(c, 18, 16, 150, 40, '◀  COMMAND', 'abort', null, { size: 12, color: '#9fb3d1' });
 
     Utils.text(c, Campaign.codename, cx, 124, {
       size: 13, color: CONFIG.colors.gold, align: 'center', glow: 6, spacing: 3 });
@@ -529,11 +624,13 @@ class UI {
       '   ·   HOSTILE COMMAND: ' + Campaign.bossFor(def).name, textX, ty + 76, {
       size: 12, color: '#9fb3d1' });
 
-    // --- engage prompt ---
+    // --- engage prompt --- (clamped: long wrapped briefs — e.g. wider
+    // fallback fonts — must never push the prompt off the bottom)
     const a = 0.6 + 0.4 * Math.sin(this.menuPulse);
-    Utils.text(c, g.briefRevealed ? '▶  FIRE / ENTER — ENGAGE' : 'FIRE / ENTER — SKIP',
-      cx, ty + 152, { size: 18, color: '#fff', align: 'center', glow: 12, alpha: a });
-    Utils.text(c, 'Q — RETURN TO COMMAND', cx, ty + 180, {
+    const promptY = Math.min(ty + 152, CONFIG.HEIGHT - 58);
+    Utils.text(c, g.briefRevealed ? '▶  TAP / FIRE — ENGAGE' : 'TAP / FIRE — SKIP',
+      cx, promptY, { size: 18, color: '#fff', align: 'center', glow: 12, alpha: a });
+    Utils.text(c, 'Q — RETURN TO COMMAND', cx, promptY + 28, {
       size: 12, color: '#9fb3d1', align: 'center' });
   }
 
@@ -542,12 +639,14 @@ class UI {
     c.fillStyle = 'rgba(4,6,16,0.7)';
     c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
     c.restore();
+    this.menuRects = [];
     const cx = CONFIG.WIDTH / 2, cy = CONFIG.HEIGHT / 2;
-    Utils.text(c, 'PAUSED', cx, cy - 20, { size: 64, color: '#fff', align: 'center', glow: 20 });
-    Utils.text(c, 'ESC / P  to resume   ·   M  toggle sound', cx, cy + 30,
-      { size: 16, color: '#9fb3d1', align: 'center' });
-    Utils.text(c, 'O  settings   ·   Q  quit to menu', cx, cy + 58,
-      { size: 14, color: '#9fb3d1', align: 'center' });
+    Utils.text(c, 'PAUSED', cx, cy - 64, { size: 64, color: '#fff', align: 'center', glow: 20 });
+    this._menuButton(c, cx - 150, cy - 14, 300, 56, '▶  RESUME', 'resume', null, { selected: true, size: 20 });
+    this._menuButton(c, cx - 150, cy + 56, 144, 48, 'SETTINGS', 'settings', null, { size: 14, color: CONFIG.colors.accent });
+    this._menuButton(c, cx + 6, cy + 56, 144, 48, 'QUIT', 'quitmenu', null, { size: 14, color: CONFIG.colors.danger });
+    Utils.text(c, 'ESC / P  resume   ·   O  settings   ·   Q  quit   ·   M  mute', cx, cy + 142,
+      { size: 13, color: '#9fb3d1', align: 'center' });
   }
 
   drawGameOver(c) {
@@ -611,13 +710,19 @@ class UI {
         alpha: 0.6 + 0.4 * Math.sin(this.menuPulse * 2),
       });
     }
-    Utils.text(c, '▶  ENTER / TAP  play again       H  hangar', cx, 660, {
-      size: 19, color: '#fff', align: 'center', glow: 12,
-      alpha: 0.6 + 0.4 * Math.sin(this.menuPulse),
-    });
-    Utils.text(c, 'O  settings   ·   A  awards   ·   Q  return to menu', cx, 690, {
-      size: 14, color: '#9fb3d1', align: 'center',
-    });
+    // Tappable navigation (replaces the old "any tap restarts" — which a
+    // still-held FIRE finger used to trigger before the stats were readable).
+    this.menuRects = [];
+    this._menuButton(c, cx - 160, 652, 320, 54, '▶  PLAY AGAIN', 'again', null, { selected: true, size: 20 });
+    const navW = 160, navGap = 10, navY = 718;
+    let nx = cx - (4 * navW + 3 * navGap) / 2;
+    this._menuButton(c, nx, navY, navW, 44, 'HANGAR  (H)', 'hangar', null, { size: 13, color: CONFIG.colors.accent });
+    nx += navW + navGap;
+    this._menuButton(c, nx, navY, navW, 44, 'AWARDS  (A)', 'achievements', null, { size: 13, color: CONFIG.colors.gold });
+    nx += navW + navGap;
+    this._menuButton(c, nx, navY, navW, 44, 'SETTINGS  (O)', 'settings', null, { size: 13, color: CONFIG.colors.accent });
+    nx += navW + navGap;
+    this._menuButton(c, nx, navY, navW, 44, 'MENU  (Q)', 'menu', null, { size: 13, color: '#9fb3d1' });
 
     // Victory epilogue: the final comm exchange fades in line by line over
     // the Earth horizon (goT is reset by Game.endGame).
@@ -625,7 +730,12 @@ class UI {
       this.goT = (this.goT || 0) + 16.7;
       CAMPAIGN_EPILOGUE.forEach((l, i) => {
         const a = Utils.clamp((this.goT - 600 - i * 900) / 500, 0, 1);
-        if (a > 0) this._dialogueLine(c, l.who, l.text, cx, 736 + i * 26, 14.5, a);
+        if (a > 0) this._dialogueLine(c, l.who, l.text, cx, 798 + i * 26, 14.5, a);
+      });
+    } else {
+      Utils.text(c, 'ENTER  play again', cx, 796, {
+        size: 13, color: '#9fb3d1', align: 'center',
+        alpha: 0.6 + 0.4 * Math.sin(this.menuPulse),
       });
     }
   }

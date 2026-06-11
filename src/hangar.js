@@ -43,7 +43,11 @@ class Hangar {
       const hit = this.rects.find(r =>
         input.pointer.x >= r.x && input.pointer.x <= r.x + r.w &&
         input.pointer.y >= r.y && input.pointer.y <= r.y + r.h);
-      if (hit) { this.sel = hit.index; this.activate(); return; }
+      if (hit) {
+        // the back chip — touch players used to have NO way out of the shop
+        if (hit.back) { Sound.uiSelect(); this.game.toMenu(); return; }
+        this.sel = hit.index; this.activate(); return;
+      }
     }
     if (input.wasPressed('Enter', ' ', 'b')) this.activate();
   }
@@ -80,6 +84,19 @@ class Hangar {
       Utils.text(c, '◈ ' + Utils.commas(Meta.credits) + ' CR' + bank, cx, 158,
         { size: 22, color: credCol, align: 'center', glow: 10, glowColor: credCol });
     } else {
+      // tappable way back to the menu (Esc/Q are keyboard-only)
+      const br = { x: 18, y: 18, w: 132, h: 40, back: true };
+      c.save();
+      Utils.roundRect(c, br.x, br.y, br.w, br.h, 10);
+      c.fillStyle = 'rgba(10,14,30,0.78)';
+      c.fill();
+      c.lineWidth = 1.5;
+      c.strokeStyle = 'rgba(70,224,255,0.32)';
+      c.stroke();
+      c.restore();
+      Utils.text(c, '◀  MENU', br.x + br.w / 2, br.y + 26, { size: 13, color: '#9fb3d1', align: 'center' });
+      this.rects.push(br);
+
       Utils.text(c, 'HANGAR', cx, 96, { size: 56, color: '#fff', align: 'center', glow: 18, glowColor: CONFIG.colors.accent });
       Utils.text(c, 'SPEND CREDITS ON PERMANENT UPGRADES', cx, 124, { size: 12, color: '#9fb3d1', align: 'center' });
       const credCol = this.flash > 0 && this.flashColor === CONFIG.colors.good ? CONFIG.colors.good : CONFIG.colors.gold;
