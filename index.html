@@ -3,7 +3,52 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Knotz: Invade Space</title>
+  <title>Knotz: Invade Space — Free Browser Space Shooter Roguelite</title>
+  <meta name="description" content="Steal an alien ship and fight home through 5 sectors to save Earth. A free story-driven Space Invaders roguelite — play instantly in your browser, no install.">
+  <link rel="canonical" href="https://knotenvy.github.io/KnotzInvadeSpace/">
+  <meta name="theme-color" content="#05060f">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph (X, Discord, iMessage, Slack, Facebook all read these) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Knotz: Invade Space">
+  <meta property="og:title" content="Knotz: Invade Space — Steal their ship. Fight home. Save Earth.">
+  <meta property="og:description" content="A free story-driven arcade roguelite. 5-sector campaign, hangar upgrades, daily challenges — right in your browser.">
+  <meta property="og:url" content="https://knotenvy.github.io/KnotzInvadeSpace/">
+  <meta property="og:image" content="https://knotenvy.github.io/KnotzInvadeSpace/assets/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Knotz: Invade Space — a starfighter battles an alien boss over Earth. Play free in your browser.">
+
+  <!-- Twitter / X card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Knotz: Invade Space — Steal their ship. Fight home. Save Earth.">
+  <meta name="twitter:description" content="A free story-driven arcade roguelite. 5-sector campaign, hangar upgrades, daily challenges — right in your browser.">
+  <meta name="twitter:image" content="https://knotenvy.github.io/KnotzInvadeSpace/assets/og-card.png">
+  <meta name="twitter:image:alt" content="Knotz: Invade Space — a starfighter battles an alien boss over Earth. Play free in your browser.">
+
+  <!-- icons -->
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/icon-64.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icon-180.png">
+
+  <!-- structured data: tells search engines this is a free browser game -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Knotz: Invade Space",
+    "url": "https://knotenvy.github.io/KnotzInvadeSpace/",
+    "image": "https://knotenvy.github.io/KnotzInvadeSpace/assets/og-card.png",
+    "description": "A free story-driven Space Invaders roguelite. Steal an alien ship, fight home through a 5-sector campaign to save Earth, bank credits and refit at the carrier UES Orion, and chase daily challenges and achievements — all in your browser, no install.",
+    "genre": ["Shoot 'em up", "Arcade", "Roguelite"],
+    "playMode": "SinglePlayer",
+    "gamePlatform": "Web Browser",
+    "applicationCategory": "Game",
+    "operatingSystem": "Any",
+    "author": { "@type": "Person", "name": "KnotEnvy", "url": "https://github.com/KnotEnvy" },
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
+  }
+  </script>
   <!-- Orbitron loaded non-render-blocking; falls back to the system stack
        offline so the game never stalls waiting on the network. -->
   <link rel="preload" as="style"
@@ -12,10 +57,20 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Crawlable + screen-reader summary: the game itself is pure canvas. -->
+  <div class="sr-only">
+    <h1>Knotz: Invade Space</h1>
+    <p>A free story-driven arcade space shooter roguelite you can play in your
+      browser. Steal an advanced alien ship, fight home through a five-sector
+      campaign to break the siege of Earth, dock with the carrier UES Orion to
+      spend banked credits on permanent upgrades, and test yourself in Endless
+      mode and seeded Daily Challenges. Keyboard, mouse and touch supported.
+      No install, no account — just play.</p>
+  </div>
   <div id="stage">
     <canvas id="game"></canvas>
   </div>
-  <noscript>This game requires JavaScript to be enabled.</noscript>
+  <noscript>Knotz: Invade Space is a free browser arcade game and requires JavaScript to play.</noscript>
 
   <!-- Modular game source, loaded in dependency order (no build step). -->
   <script src="src/config.js"></script>
