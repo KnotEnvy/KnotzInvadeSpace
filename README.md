@@ -10,7 +10,7 @@ at the end of every sector. Bank your earnings into permanent upgrades in the
 
 ![arcade](https://img.shields.io/badge/genre-arcade%20shooter-46e0ff) ![tech](https://img.shields.io/badge/built%20with-vanilla%20JS-ffd23f) ![deps](https://img.shields.io/badge/dependencies-none-3ff58b)
 
-[![Knotz: Invade Space — steal their ship, fight home, save Earth](assets/og-card.png)](https://knotenvy.github.io/KnotzInvadeSpace/)
+[![Knotz: Invade Space — steal their ship, fight home, save Earth](assets/og-card-v2.png)](https://knotenvy.github.io/KnotzInvadeSpace/)
 
 ### ▶️ [**Play it now in your browser →**](https://knotenvy.github.io/KnotzInvadeSpace/)
 
