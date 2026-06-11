@@ -18,9 +18,12 @@ No install, no sign-up. Runs on desktop and mobile.
 
 - **Story campaign — OPERATION HOMECOMING** — fight home through **5 hand-scripted
   sectors** to break the siege of Earth, flying a stolen Hive ship with an awakened
-  AI. Sector briefings with story dialogue, in-mission comm chatter (your ship,
-  Earth Command... and the HIVEMIND itself), warp jumps, scripted waves and
-  mini-boss escorts, named sector bosses and a final 4-phase **Mothership** duel.
+  AI while the carrier **UES Orion** follows the corridor you clear. Sector
+  briefings with story dialogue and a live sector map, in-mission comm chatter
+  (your ship, Earth Command... and the HIVEMIND itself), warp jumps, and **mid-run
+  docking**: credits bank after every sector, and you spend them on the Orion's
+  deck — repairs, refit, upgrades that apply immediately — before the next
+  briefing. Ends in a final 4-phase **Mothership** duel over Earth.
 - **Three game modes** — the story **Campaign**, an unbounded **Endless** mode,
   and a date-seeded **Daily Challenge** with rotating modifiers.
 - **Roguelite meta-progression** — earn **credits** every run and spend them in the
@@ -74,7 +77,9 @@ and grab the guaranteed power-up shower after each boss.
 ## 🛰️ The Hangar (roguelite loop)
 
 Every run pays out **credits** based on your score, waves cleared and bosses slain.
-Press **H** from the title or game-over screen to enter the **Hangar** and invest them:
+Press **H** from the title or game-over screen to enter the **Hangar** and invest them.
+In the **Campaign**, the Hangar is also the **Orion's flight deck**: you dock between
+sectors, bank that sector's payout on the spot, and refit mid-run:
 
 | Upgrade | Effect |
 |---------|--------|
@@ -127,7 +132,7 @@ scripts (so it runs straight from the file system — no bundler required):
 | `src/drone.js`    | Combat Drone wingman that auto-fires |
 | `src/hazard.js`   | Drifting, splitting asteroids |
 | `src/ui.js`       | HUD, menu, pause, game-over and banner screens |
-| `src/hangar.js`   | Between-runs upgrade shop (the roguelite meta layer) |
+| `src/hangar.js`   | Upgrade shop: between runs, and docked mid-campaign on the UES Orion |
 | `src/game.js`     | Orchestrator: state machine, collisions, scoring, progression |
 | `src/main.js`     | Asset preloader, responsive canvas, fixed-timestep loop |
 

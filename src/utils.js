@@ -82,13 +82,16 @@ const Utils = {
   },
 
   // Draw text with a soft drop shadow — used everywhere in the HUD/menus.
+  // `spacing` (px of letter-spacing) works on modern browsers and silently
+  // no-ops on engines without ctx.letterSpacing.
   text(c, str, x, y, {
     size = 24, font = "'Orbitron', 'Trebuchet MS', sans-serif", color = '#fff',
     align = 'left', baseline = 'alphabetic', glow = 0, glowColor = '#46e0ff',
-    weight = 700, alpha = 1,
+    weight = 700, alpha = 1, spacing = 0,
   } = {}) {
     c.save();
     c.globalAlpha = alpha;
+    if (spacing) c.letterSpacing = spacing + 'px';
     c.font = `${weight} ${size}px ${font}`;
     c.textAlign = align;
     c.textBaseline = baseline;

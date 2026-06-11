@@ -43,6 +43,22 @@ class Player {
     this.recoil = 0;        // brief kick-back on firing (visual only)
   }
 
+  // Mid-run refit at the Orion's dock (campaign): re-derive the upgrade-
+  // backed stats (anything bought while docked applies NOW, not next run),
+  // run field repairs (lives topped back up to the start value, never
+  // lowered), refill energy, and re-arm the Aegis shield if owned.
+  refit() {
+    this.maxLives = Meta.maxLives();
+    this.lives = Math.min(this.maxLives, Math.max(this.lives, Meta.startLives()));
+    this.speed = this.cfg.speed * Meta.speedMul();
+    this.maxEnergy = this.cfg.maxEnergy * Meta.energyMul();
+    this.energyRegen = this.cfg.energyRegen * Meta.regenMul();
+    this.fireMul = Meta.fireMul();
+    this.twin = Meta.twin();
+    this.energy = this.maxEnergy;
+    this.shield = Math.max(this.shield, Meta.startShield());
+  }
+
   get rapid() { return this.rapidTimer > 0; }
   get spread() { return this.spreadTimer > 0; }
 

@@ -78,9 +78,18 @@ class Game {
     this.sector = 1;          // current campaign sector (1-based)
     this.sectorWave = 0;      // waves started within the sector (0 = none yet)
     this.warpTimer = 0;       // post-boss loot window before the next jump
+    this.nextWaveTimer = 0;   // breather between waves / pre-boss beat
+    this.pendingSector = 0;   // sector queued behind the dock screen
     this.briefT = 0;          // briefing typewriter clock
     this.briefRevealed = false; // set by UI.drawBriefing once all text is out
     this.comms = [];          // queued {who,text,t,dur} comm messages
+    this.flashT = 0;          // warp-arrival screen flash
+    this.flashDur = 1;
+    // mid-run credit banking (campaign docks pay out per sector)
+    this._bankScore = 0;
+    this._bankWaves = 0;
+    this._bankBosses = 0;
+    this.lastBank = 0;        // most recent dock payout (shown on the dock)
   }
 
   _tempo() { return Math.min(1.6, 1 + this.level * 0.06); }
@@ -156,6 +165,7 @@ class Game {
     this.waves = [];
     this.boss = null;
     this._minionQueue.length = 0;
+    this.nextWaveTimer = 0;
     this.hazardTimer = CONFIG.hazard.spawnBase;
     this.starfield.setBackground(Campaign.sector(n).bg);
     this.briefT = 0;
@@ -166,8 +176,46 @@ class Game {
 
   launchSector() {
     this.state = 'playing';
+    this.screenFlash(320);             // drop out of warp
     Sound.startMusic(this._tempo());
     this.startWaveOrBoss();
+  }
+
+  // Dock with the UES Orion between sectors: bank the sector's credit payout,
+  // run field repairs, and open the Hangar as a mid-run refit bay. DEPART
+  // hands off to the next sector's briefing.
+  enterDock(nextSector) {
+    this.pendingSector = nextSector;
+    this.bankCampaignCredits();
+    this.player.refit();               // field repairs on arrival
+    this.comms.length = 0;
+    this.banner = null;
+    this.nextWaveTimer = 0;
+    this.state = 'dock';
+    this.hangar.open({ docked: true });
+    Sound.stopMusic();
+    Sound.uiSelect();
+  }
+
+  departDock() {
+    this.player.refit();               // apply anything bought while docked
+    const dn = Meta.droneCount();      // wingmen may have been purchased
+    this.drones = Array.from({ length: dn }, (_, i) => new Drone(this, i, dn));
+    this.enterSector(this.pendingSector);
+  }
+
+  // Pay out credits for everything earned since the last bank. Campaign docks
+  // call this per sector (so there's something to SPEND mid-run); endGame
+  // banks the remainder, so a run never pays the same stats twice.
+  bankCampaignCredits() {
+    this.lastBank = Meta.award(this.score - this._bankScore,
+      this.waveCount - this._bankWaves, this.bossesSlain - this._bankBosses);
+    this._bankScore = this.score;
+    this._bankWaves = this.waveCount;
+    this._bankBosses = this.bossesSlain;
+    this.creditsEarned += this.lastBank;
+    Ach.onCredits();
+    return this.lastBank;
   }
 
   // Queue a story comm line ({who, text}); the HUD shows one at a time.
@@ -194,8 +242,13 @@ class Game {
     Sound.stopMusic();
     if (this.victory) Sound.extraLife(); else Sound.gameOver();
     if (this.score > Meta.hi) { Meta.hi = this.score; this.newHiScore = true; }
-    const creditMul = this.mode === 'daily' ? this.dailyMods.creditMul : 1;
-    this.creditsEarned = Meta.award(this.score, this.waveCount, this.bossesSlain, creditMul);
+    // Campaign credits bank per sector at the docks; settle the remainder.
+    if (this.mode === 'campaign') {
+      this.bankCampaignCredits();
+    } else {
+      const creditMul = this.mode === 'daily' ? this.dailyMods.creditMul : 1;
+      this.creditsEarned = Meta.award(this.score, this.waveCount, this.bossesSlain, creditMul);
+    }
     this.hiScore = Meta.hi;
     // Daily-challenge bookkeeping + run-end achievements.
     if (this.mode === 'daily' && this.dailyKey) {
@@ -258,8 +311,7 @@ class Game {
       this.boss = new Boss(this, this.sector, { def: bdef });
       this.bossHitless = true;
       this.showBanner(bdef.final ? 'FINAL BOSS' : 'SECTOR BOSS',
-        bdef.name + ' APPROACHES', CONFIG.colors.danger);
-      this.say(def.taunt);
+        bdef.name + ' APPROACHES', CONFIG.colors.danger, 2300);
       Sound.bossAlarm();
       return;
     }
@@ -268,7 +320,7 @@ class Game {
     this.waves = [new Wave(this, wd.cols, wd.rows, speed, wd.mix.armor || 0,
       this.waveRng(), wd.mix)];
     this.showBanner('WAVE ' + this.sectorWave + ' / ' + def.waves.length,
-      null, CONFIG.colors.accent);
+      def.name, CONFIG.colors.accent);
     Sound.waveStart();
     this.say(wd.say);
     if (wd.mini) {
@@ -319,15 +371,15 @@ class Game {
         this.endGame();
         return;
       }
-      // Sector secured: bonus score, then a short warp window so the boss
-      // loot can be scooped before update() jumps us to the next sector.
+      // Sector secured: bonus score, then a loot window before update() warps
+      // us back to the Orion (the dock) and on to the next sector.
       const bonus = CONFIG.campaign.sectorBonus * this.sector;
       this.score += bonus;
       this.waveCount++;
       this.showBanner('SECTOR ' + this.sector + ' SECURED',
-        '+' + Utils.commas(bonus) + ' BONUS', CONFIG.colors.good);
+        '+' + Utils.commas(bonus) + ' BONUS', CONFIG.colors.good, 2600);
       this.say(Campaign.sector(this.sector).clearSay);
-      this.warpTimer = 3400;
+      this.warpTimer = CONFIG.campaign.warpWindow;
       return;
     }
 
@@ -537,8 +589,15 @@ class Game {
     this.punch = Math.max(this.punch, a);
   }
 
-  showBanner(title, sub, color) {
-    this.banner = { title, sub, color, time: 0, duration: 1700 };
+  showBanner(title, sub, color, duration = 1700) {
+    this.banner = { title, sub, color, time: 0, duration };
+  }
+
+  // Brief additive white-out on warp arrival (skipped under reduced motion).
+  screenFlash(ms = 260) {
+    if (Meta.reducedMotion()) return;
+    this.flashT = Math.max(this.flashT, ms);
+    this.flashDur = Math.max(this.flashDur, ms);
   }
 
   // Occasional firework bursts over the Earth finale on the victory screen.
@@ -562,10 +621,15 @@ class Game {
     // Celebratory fireworks roll on while the campaign-victory screen is up.
     if (this.state === 'gameover' && this.victory) this._victoryFx();
 
-    if (this.state === 'hangar') this.hangar.update(dt);
+    if (this.state === 'hangar' || this.state === 'dock') this.hangar.update(dt);
     if (this.state === 'settings') this.settings.update(dt);
-    // Warp streaks while a campaign briefing is up; settle back otherwise.
-    this.starfield.setWarp(this.state === 'briefing' ? 1 : 0);
+    if (this.flashT > 0) this.flashT -= dt; else this.flashDur = 1;
+    // Warp streaks while a campaign briefing is up, and as the post-boss
+    // loot window winds down (the jump spooling up); settle back otherwise.
+    const warping = this.state === 'briefing' ||
+      (this.state === 'playing' && this.warpTimer > 0 &&
+       this.warpTimer < CONFIG.campaign.warpRamp);
+    this.starfield.setWarp(warping ? 1 : 0);
     if (this.state === 'briefing') this.briefT += dt;
     if (this.state !== 'playing') return;
 
@@ -597,16 +661,31 @@ class Game {
       if (m.t > m.dur) this.comms.shift();
     }
 
-    // post-boss warp window (campaign): scoop the loot, then jump
+    // post-boss warp window (campaign): scoop the loot, then fall back to
+    // the Orion's deck (the dock) before the next sector's briefing.
     if (this.warpTimer > 0 && !this.gameOverPending) {
       this.warpTimer -= dt;
-      if (this.warpTimer <= 0) { this.enterSector(this.sector + 1); return; }
+      if (this.warpTimer <= 0) { this.enterDock(this.sector + 1); return; }
     }
 
     if (!this.boss && this.waves.length && this.waves[0].complete) {
       this.waves = [];
       this.waveCount++;
-      this.startWaveOrBoss();
+      // Breathing room before the next beat. The campaign's pre-boss beat is
+      // longer, and the HIVEMIND taunt plays over the emptied arena.
+      if (this.mode === 'campaign') {
+        const def = Campaign.sector(this.sector);
+        const bossNext = this.sectorWave >= def.waves.length;
+        this.nextWaveTimer = bossNext ? CONFIG.campaign.bossDelay : CONFIG.campaign.waveDelay;
+        if (bossNext) this.say(def.taunt);
+      } else {
+        this.nextWaveTimer = CONFIG.wave.breather;
+      }
+    }
+    if (this.nextWaveTimer > 0 && !this.boss && !this.waves.length &&
+        this.warpTimer <= 0 && !this.gameOverPending) {
+      this.nextWaveTimer -= dt;
+      if (this.nextWaveTimer <= 0) this.startWaveOrBoss();
     }
 
     if (!this.player.alive) this.triggerGameOver();
@@ -722,6 +801,7 @@ class Game {
         break;
       }
       case 'hangar':
+      case 'dock':
         this.hangar.handleInput(i);
         break;
       case 'settings':
@@ -769,7 +849,7 @@ class Game {
 
     const worldVisible = this.state !== 'menu' && this.state !== 'hangar' &&
       this.state !== 'settings' && this.state !== 'achievements' &&
-      this.state !== 'briefing';
+      this.state !== 'briefing' && this.state !== 'dock';
     if (worldVisible) {
       sc.save();
       if (this.punch > 0.0005) {
@@ -797,6 +877,8 @@ class Game {
       this.ui.drawMenu(c);
     } else if (this.state === 'briefing') {
       this.ui.drawBriefing(c);
+    } else if (this.state === 'dock') {
+      this.hangar.draw(c);
     } else if (this.state === 'hangar') {
       this.hangar.draw(c);
     } else if (this.state === 'settings') {
@@ -813,6 +895,16 @@ class Game {
       }
       if (this.state === 'paused') this.ui.drawPause(c);
       if (this.state === 'gameover') this.ui.drawGameOver(c);
+    }
+
+    // Warp-arrival flash washes over everything for a few frames.
+    if (this.flashT > 0) {
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.globalAlpha = Utils.clamp(this.flashT / this.flashDur, 0, 1) * 0.7;
+      c.fillStyle = '#cfeaff';
+      c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+      c.restore();
     }
 
     // Achievement toasts float above everything, in every state.

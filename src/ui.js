@@ -4,6 +4,11 @@
  * state machine and tells the UI which screen to render.
  * ===================================================================== */
 
+// Story/dialogue typeface — condensed and readable next to Orbitron's
+// display-heavy HUD voice. Loaded non-blocking alongside Orbitron; the
+// system fallback keeps everything legible offline.
+const DIALOGUE_FONT = "'Rajdhani', 'Segoe UI', 'Trebuchet MS', sans-serif";
+
 class UI {
   constructor(game) {
     this.game = game;
@@ -20,9 +25,9 @@ class UI {
 
   // Word-wrap `text` to maxW at the given size; returns the lines. Cheap
   // enough for the briefing/comm panels (a handful of measureText calls).
-  _wrap(c, text, maxW, sizePx) {
+  _wrap(c, text, maxW, sizePx, font = DIALOGUE_FONT) {
     c.save();
-    c.font = `700 ${sizePx}px 'Orbitron', 'Trebuchet MS', sans-serif`;
+    c.font = `600 ${sizePx}px ${font}`;
     const words = text.split(' ');
     const lines = [];
     let cur = '';
@@ -36,16 +41,18 @@ class UI {
     return lines;
   }
 
-  // One centred dialogue line: "WHO  text" with the speaker in their colour.
+  // One centred dialogue line: "WHO  text" with the speaker in their colour
+  // (name in the HUD voice, the line itself in the dialogue face).
   _dialogueLine(c, who, text, cx, y, size, alpha) {
     c.save();
-    c.font = `700 ${size}px 'Orbitron', 'Trebuchet MS', sans-serif`;
-    const whoStr = who + '   ';
+    c.font = `700 ${size - 2}px 'Orbitron', 'Trebuchet MS', sans-serif`;
+    const whoStr = who + '  ';
     const w1 = c.measureText(whoStr).width;
+    c.font = `600 ${size}px ${DIALOGUE_FONT}`;
     const x0 = cx - (w1 + c.measureText(text).width) / 2;
     c.restore();
-    Utils.text(c, whoStr, x0, y, { size, color: Campaign.speakerColor(who), alpha, glow: 5 });
-    Utils.text(c, text, x0 + w1, y, { size, color: '#dfe9ff', alpha });
+    Utils.text(c, whoStr, x0, y, { size: size - 2, color: Campaign.speakerColor(who), alpha, glow: 5 });
+    Utils.text(c, text, x0 + w1, y, { size, color: '#dfe9ff', alpha, font: DIALOGUE_FONT, weight: 600 });
   }
 
   // --- small reusable pieces ---------------------------------------------
@@ -261,7 +268,7 @@ class UI {
     const shown = Math.min(m.text.length, Math.floor(m.t / 16));
     const col = Campaign.speakerColor(m.who);
     const w = 480, x = (CONFIG.WIDTH - w) / 2;
-    const lines = this._wrap(c, m.text, w - 30, 13);
+    const lines = this._wrap(c, m.text, w - 30, 14.5);
     const h = 34 + lines.length * 18;
     const y = CONFIG.HEIGHT - (this.game.input.buttonsActive() ? 286 : 184) - h;
     c.save();
@@ -280,7 +287,7 @@ class UI {
     lines.forEach((ln, i) => {
       if (budget <= 0) return;
       Utils.text(c, ln.slice(0, budget), x + 15, y + 38 + i * 18,
-        { size: 13, color: '#dfe9ff', alpha: a });
+        { size: 14.5, color: '#dfe9ff', alpha: a, font: DIALOGUE_FONT, weight: 600 });
       budget -= ln.length + 1;
     });
   }
@@ -436,23 +443,61 @@ class UI {
     this.menuPulse += 0.05;
     this.vignette(c);
 
-    Utils.text(c, Campaign.codename, cx, 128, {
-      size: 13, color: CONFIG.colors.gold, align: 'center', glow: 6 });
-    Utils.text(c, 'SECTOR ' + g.sector + ' / ' + Campaign.count(), cx, 166, {
-      size: 16, color: CONFIG.colors.accent, align: 'center' });
-    Utils.text(c, def.name, cx, 216, {
-      size: 44, color: '#fff', align: 'center', glow: 20, glowColor: CONFIG.colors.accent });
-    Utils.text(c, def.sub, cx, 246, { size: 14, color: '#9fb3d1', align: 'center' });
+    Utils.text(c, Campaign.codename, cx, 124, {
+      size: 13, color: CONFIG.colors.gold, align: 'center', glow: 6, spacing: 3 });
+    Utils.text(c, 'SECTOR ' + g.sector + ' / ' + Campaign.count(), cx, 160, {
+      size: 16, color: CONFIG.colors.accent, align: 'center', spacing: 2 });
+    Utils.text(c, def.name, cx, 210, {
+      size: 44, color: '#fff', align: 'center', glow: 22, glowColor: CONFIG.colors.accent, spacing: 3 });
+    Utils.text(c, def.sub, cx, 240, {
+      size: 16, color: '#9fb3d1', align: 'center', font: DIALOGUE_FONT, weight: 600 });
+
+    // --- sector progress map: the corridor home, Earth at the end ---
+    const mapY = 276, span = 400, x0 = cx - span / 2 - 14;
+    const step = span / Campaign.count();
+    const pulse = 0.55 + 0.45 * Math.sin(this.menuPulse * 1.6);
+    c.save();
+    for (let i = 1; i <= Campaign.count(); i++) {     // connecting segments
+      const nx = x0 + (i - 1) * step;
+      c.strokeStyle = i < g.sector ? 'rgba(63,245,139,0.75)' : 'rgba(255,255,255,0.18)';
+      c.lineWidth = 2;
+      c.beginPath(); c.moveTo(nx + 10, mapY); c.lineTo(nx + step - 10, mapY); c.stroke();
+    }
+    for (let i = 1; i <= Campaign.count(); i++) {     // sector nodes
+      const nx = x0 + (i - 1) * step;
+      const cleared = i < g.sector, cur = i === g.sector;
+      c.beginPath(); c.arc(nx, mapY, cur ? 7 : 5.5, 0, Math.PI * 2);
+      if (cleared) { c.globalAlpha = 0.95; c.fillStyle = CONFIG.colors.good; c.fill(); }
+      else if (cur) {
+        c.globalAlpha = 1; c.fillStyle = CONFIG.colors.accent;
+        c.shadowColor = CONFIG.colors.accent; c.shadowBlur = 16 * pulse; c.fill();
+        c.shadowBlur = 0;
+        c.globalAlpha = pulse; c.lineWidth = 2; c.strokeStyle = '#fff';
+        c.beginPath(); c.arc(nx, mapY, 11, 0, Math.PI * 2); c.stroke();
+      } else {
+        c.globalAlpha = 0.5; c.lineWidth = 1.5; c.strokeStyle = '#9fb3d1'; c.stroke();
+      }
+      c.globalAlpha = 1;
+    }
+    // Earth — the little blue marble at the end of the corridor
+    const ex = x0 + Campaign.count() * step;
+    c.globalCompositeOperation = 'lighter';
+    c.fillStyle = '#3fa2f5';
+    c.shadowColor = CONFIG.colors.accent;
+    c.shadowBlur = 16;
+    c.beginPath(); c.arc(ex, mapY, 8, 0, Math.PI * 2); c.fill();
+    c.restore();
+    Utils.text(c, 'EARTH', ex, mapY + 28, { size: 10, color: CONFIG.colors.accent, align: 'center' });
 
     // --- story dialogue (typewriter across the entries in order) ---
-    const size = 14, lh = 20, entryGap = 14, textX = 84, maxW = 552;
+    const size = 15.5, lh = 21, entryGap = 13, textX = 84, maxW = 552;
     const blocks = def.brief.map(b => ({ who: b.who, lines: this._wrap(c, b.text, maxW, size) }));
     let panelH = 26, totalChars = 0;
     for (const b of blocks) {
       panelH += 16 + b.lines.length * lh + entryGap;
       for (const ln of b.lines) totalChars += ln.length + 1;
     }
-    const py = 288;
+    const py = 316;
     this.panel(c, 56, py, 608, panelH, 0.62);
 
     let budget = Math.floor(g.briefT / 15);    // chars revealed so far
@@ -461,11 +506,12 @@ class UI {
     for (const b of blocks) {
       if (budget <= 0) break;
       Utils.text(c, '▸ ' + b.who, textX, y, {
-        size: 11.5, color: Campaign.speakerColor(b.who), glow: 6 });
+        size: 11.5, color: Campaign.speakerColor(b.who), glow: 6, spacing: 1.5 });
       y += 16;
       for (const ln of b.lines) {
         if (budget <= 0) break;
-        Utils.text(c, ln.slice(0, budget), textX, y, { size, color: '#dfe9ff' });
+        Utils.text(c, ln.slice(0, budget), textX, y,
+          { size, color: '#dfe9ff', font: DIALOGUE_FONT, weight: 600 });
         budget -= ln.length + 1;
         y += lh;
       }
@@ -473,11 +519,12 @@ class UI {
     }
 
     // --- threat readout (intel is always visible) ---
-    const ty = py + panelH + 18;
+    const ty = py + panelH + 16;
     this.panel(c, 56, ty, 608, 98, 0.62);
     Utils.text(c, 'THREAT ASSESSMENT', textX, ty + 28, {
-      size: 11.5, color: CONFIG.colors.danger, glow: 6 });
-    Utils.text(c, def.threat, textX, ty + 51, { size: 13, color: '#dfe9ff' });
+      size: 11.5, color: CONFIG.colors.danger, glow: 6, spacing: 1.5 });
+    Utils.text(c, def.threat, textX, ty + 52, {
+      size: 15, color: '#dfe9ff', font: DIALOGUE_FONT, weight: 600 });
     Utils.text(c, 'COMBAT WAVES ' + def.waves.length +
       '   ·   HOSTILE COMMAND: ' + Campaign.bossFor(def).name, textX, ty + 76, {
       size: 12, color: '#9fb3d1' });
@@ -578,7 +625,7 @@ class UI {
       this.goT = (this.goT || 0) + 16.7;
       CAMPAIGN_EPILOGUE.forEach((l, i) => {
         const a = Utils.clamp((this.goT - 600 - i * 900) / 500, 0, 1);
-        if (a > 0) this._dialogueLine(c, l.who, l.text, cx, 740 + i * 27, 12.5, a);
+        if (a > 0) this._dialogueLine(c, l.who, l.text, cx, 736 + i * 26, 14.5, a);
       });
     }
   }
@@ -597,6 +644,17 @@ class UI {
       a = Utils.clamp((duration - time) / 450, 0, 1);
       sc = 1 + (1 - a) * 0.06;
     }
+    // cinematic band behind the text so banners read over any battlefield
+    c.save();
+    c.globalAlpha = a * 0.6;
+    const band = c.createLinearGradient(0, cy - 56, 0, cy + 60);
+    band.addColorStop(0, 'rgba(4,6,16,0)');
+    band.addColorStop(0.32, 'rgba(4,6,16,0.85)');
+    band.addColorStop(0.68, 'rgba(4,6,16,0.85)');
+    band.addColorStop(1, 'rgba(4,6,16,0)');
+    c.fillStyle = band;
+    c.fillRect(0, cy - 56, CONFIG.WIDTH, 116);
+    c.restore();
     // glowing underline that sweeps open
     c.save();
     c.globalCompositeOperation = 'lighter';
@@ -604,15 +662,15 @@ class UI {
     c.fillStyle = col;
     c.shadowColor = col;
     c.shadowBlur = 16;
-    const lw = 200 * a * sc;
+    const lw = 210 * a * sc;
     c.fillRect(cx - lw, cy + 18, lw * 2, 2.5);
     c.restore();
     // title + subtitle (scaled/slid)
     c.save();
     c.translate(cx, cy + slide);
     c.scale(sc, sc);
-    Utils.text(c, title, 0, 0, { size: 56, color: col, align: 'center', glow: 20, alpha: a });
+    Utils.text(c, title, 0, 0, { size: 56, color: col, align: 'center', glow: 22, alpha: a, spacing: 4 });
     c.restore();
-    if (sub) Utils.text(c, sub, cx, cy + 40, { size: 18, color: '#cfe6ff', align: 'center', alpha: a });
+    if (sub) Utils.text(c, sub, cx, cy + 42, { size: 17, color: '#cfe6ff', align: 'center', alpha: a, spacing: 2 });
   }
 }

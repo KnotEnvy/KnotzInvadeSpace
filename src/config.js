@@ -62,6 +62,7 @@ const CONFIG = {
     speedPerWave: 0.12,
     maxSpeed: 3.4,          // cap so very deep waves stay fair (balance pass)
     bossEvery: 5,           // every Nth wave is a boss wave
+    breather: 900,          // ms pause between waves (endless/daily pacing)
   },
 
   boss: {
@@ -201,6 +202,10 @@ const CONFIG = {
   // bosses, dialogue) is authored data in src/campaign.js.
   campaign: {
     sectorBonus: 500,      // score bonus per sector secured (x sector number)
+    waveDelay: 1700,       // ms breather between campaign waves
+    bossDelay: 2600,       // ms pre-boss beat (the HIVEMIND taunt plays here)
+    warpWindow: 4800,      // ms post-boss loot window before the jump
+    warpRamp: 1500,        // last N ms of the window: starfield ramps to warp
   },
 
   // Daily Challenge: a date-seeded run with a couple of random modifiers.
