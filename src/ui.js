@@ -18,6 +18,36 @@ class UI {
     return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   }
 
+  // Word-wrap `text` to maxW at the given size; returns the lines. Cheap
+  // enough for the briefing/comm panels (a handful of measureText calls).
+  _wrap(c, text, maxW, sizePx) {
+    c.save();
+    c.font = `700 ${sizePx}px 'Orbitron', 'Trebuchet MS', sans-serif`;
+    const words = text.split(' ');
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const probe = cur ? cur + ' ' + w : w;
+      if (cur && c.measureText(probe).width > maxW) { lines.push(cur); cur = w; }
+      else cur = probe;
+    }
+    c.restore();
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  // One centred dialogue line: "WHO  text" with the speaker in their colour.
+  _dialogueLine(c, who, text, cx, y, size, alpha) {
+    c.save();
+    c.font = `700 ${size}px 'Orbitron', 'Trebuchet MS', sans-serif`;
+    const whoStr = who + '   ';
+    const w1 = c.measureText(whoStr).width;
+    const x0 = cx - (w1 + c.measureText(text).width) / 2;
+    c.restore();
+    Utils.text(c, whoStr, x0, y, { size, color: Campaign.speakerColor(who), alpha, glow: 5 });
+    Utils.text(c, text, x0 + w1, y, { size, color: '#dfe9ff', alpha });
+  }
+
   // --- small reusable pieces ---------------------------------------------
   panel(c, x, y, w, h, alpha = 0.72) {
     c.save();
@@ -83,11 +113,53 @@ class UI {
       { size: 26, color: '#fff', glow: rolling ? 16 : 8, glowColor: CONFIG.colors.gold });
     Utils.text(c, 'HI ' + Utils.commas(g.hiScore), 22, 78, { size: 12, color: CONFIG.colors.gold });
 
-    // wave / level (top-right)
-    Utils.text(c, 'WAVE ' + g.waveCount, CONFIG.WIDTH - 22, 30,
-      { size: 16, color: '#fff', align: 'right', glow: 6 });
-    Utils.text(c, 'LEVEL ' + g.level, CONFIG.WIDTH - 22, 52,
-      { size: 12, color: CONFIG.colors.accent, align: 'right' });
+    // top-right: campaign sector readout + wave pips, or the endless counters
+    if (g.mode === 'campaign') {
+      const def = Campaign.sector(g.sector);
+      Utils.text(c, 'SECTOR ' + g.sector + ' / ' + Campaign.count(), CONFIG.WIDTH - 22, 30,
+        { size: 16, color: '#fff', align: 'right', glow: 6 });
+      Utils.text(c, def.name, CONFIG.WIDTH - 22, 52,
+        { size: 12, color: CONFIG.colors.accent, align: 'right' });
+      // progress pips: a dot per wave, a diamond for the sector boss
+      const total = def.waves.length;
+      const py = 66, pulse = 0.55 + 0.45 * Math.sin(Date.now() / 180);
+      c.save();
+      for (let i = 0; i < total; i++) {
+        const px = CONFIG.WIDTH - 27 - (total - i) * 16;
+        const done = g.sectorWave > total || i < g.sectorWave - 1;
+        const cur = g.sectorWave <= total && i === g.sectorWave - 1;
+        c.beginPath();
+        c.arc(px, py, 4, 0, Math.PI * 2);
+        if (done) { c.fillStyle = CONFIG.colors.good; c.globalAlpha = 0.9; c.fill(); }
+        else if (cur) {
+          c.fillStyle = CONFIG.colors.accent; c.globalAlpha = pulse;
+          c.shadowColor = CONFIG.colors.accent; c.shadowBlur = 8; c.fill();
+          c.shadowBlur = 0;
+        } else {
+          c.globalAlpha = 0.45; c.lineWidth = 1.5;
+          c.strokeStyle = 'rgba(255,255,255,0.6)'; c.stroke();
+        }
+      }
+      // boss diamond
+      const bx = CONFIG.WIDTH - 27, bossUp = g.sectorWave > total;
+      c.globalAlpha = bossUp ? pulse : 0.5;
+      c.translate(bx, py);
+      c.rotate(Math.PI / 4);
+      if (bossUp) {
+        c.fillStyle = CONFIG.colors.danger;
+        c.shadowColor = CONFIG.colors.danger; c.shadowBlur = 10;
+        c.fillRect(-4.5, -4.5, 9, 9);
+      } else {
+        c.lineWidth = 1.5; c.strokeStyle = CONFIG.colors.danger;
+        c.strokeRect(-4.5, -4.5, 9, 9);
+      }
+      c.restore();
+    } else {
+      Utils.text(c, 'WAVE ' + g.waveCount, CONFIG.WIDTH - 22, 30,
+        { size: 16, color: '#fff', align: 'right', glow: 6 });
+      Utils.text(c, 'LEVEL ' + g.level, CONFIG.WIDTH - 22, 52,
+        { size: 12, color: CONFIG.colors.accent, align: 'right' });
+    }
 
     // boss bar overrides the top strip
     if (g.boss && g.boss.alive) g.boss.drawHealthBar(c);
@@ -172,6 +244,44 @@ class UI {
     chips.forEach((ch, i) => {
       const x = 30, y = baseY - 34 - i * 18;
       Utils.text(c, ch[0], x, y, { size: 12, color: ch[2], glow: 6 });
+    });
+
+    // story comms (campaign chatter) float above the bottom strip
+    this.drawComms(c);
+  }
+
+  // The active comm line: a small transmission card with the speaker's name
+  // and a typewriter reveal. Sits bottom-centre; lifts clear of the on-screen
+  // touch buttons when they're active.
+  drawComms(c) {
+    const m = this.game.comms[0];
+    if (!m || this.game.state === 'gameover') return;
+    const a = m.t > m.dur - 350 ? Math.max(0, (m.dur - m.t) / 350)
+      : Math.min(1, m.t / 180);
+    const shown = Math.min(m.text.length, Math.floor(m.t / 16));
+    const col = Campaign.speakerColor(m.who);
+    const w = 480, x = (CONFIG.WIDTH - w) / 2;
+    const lines = this._wrap(c, m.text, w - 30, 13);
+    const h = 34 + lines.length * 18;
+    const y = CONFIG.HEIGHT - (this.game.input.buttonsActive() ? 286 : 184) - h;
+    c.save();
+    c.globalAlpha = 0.85 * a;
+    Utils.roundRect(c, x, y, w, h, 9);
+    c.fillStyle = 'rgba(6,10,24,0.86)';
+    c.fill();
+    c.lineWidth = 1.5;
+    c.strokeStyle = col;
+    c.shadowColor = col;
+    c.shadowBlur = 10;
+    c.stroke();
+    c.restore();
+    Utils.text(c, '▸ ' + m.who, x + 15, y + 19, { size: 11, color: col, glow: 6, alpha: a });
+    let budget = shown;
+    lines.forEach((ln, i) => {
+      if (budget <= 0) return;
+      Utils.text(c, ln.slice(0, budget), x + 15, y + 38 + i * 18,
+        { size: 13, color: '#dfe9ff', alpha: a });
+      budget -= ln.length + 1;
     });
   }
 
@@ -267,6 +377,18 @@ class UI {
         { size: 12, color: '#9fb3d1', align: 'center' });
     }
 
+    // Campaign detail: the operation codename + persistent story progress.
+    if (mode.id === 'campaign') {
+      Utils.text(c, Campaign.codename + '  ·  ' + Campaign.count() + ' SECTORS', cx, 422,
+        { size: 12, color: CONFIG.colors.gold, align: 'center', glow: 4 });
+      const wins = Meta.campaignWins(), best = Meta.campaignBest();
+      const line = wins > 0 ? '★ EARTH SAVED ×' + wins + ' ★'
+        : best > 0 ? 'FURTHEST: SECTOR ' + best + ' — ' + Campaign.sector(best).name + ' SECURED'
+        : 'FIRST FLIGHT — NO SECTORS SECURED YET';
+      Utils.text(c, line, cx, 442,
+        { size: 12, color: (wins || best) ? CONFIG.colors.good : '#9fb3d1', align: 'center' });
+    }
+
     // --- launch ---
     const a = 0.6 + 0.4 * Math.sin(this.menuPulse);
     const lw = 300, lh = 56, lx = cx - lw / 2, ly = 470;
@@ -300,6 +422,72 @@ class UI {
     Utils.text(c, Sound.muted ? '🔇 SOUND OFF  (M)' : '🔊 SOUND ON  (M)', cx, 840, {
       size: 13, color: '#9fb3d1', align: 'center',
     });
+  }
+
+  // --- campaign sector briefing (the 'briefing' state) ---------------------
+  // Shown on arrival in every sector while the starfield streaks past in
+  // warp. Sector title card, typewriter story dialogue, a threat readout,
+  // and the engage prompt. Sets game.briefRevealed once all text is out so
+  // the Game knows whether FIRE should fast-forward or launch.
+  drawBriefing(c) {
+    const g = this.game;
+    const def = Campaign.sector(g.sector);
+    const cx = CONFIG.WIDTH / 2;
+    this.menuPulse += 0.05;
+    this.vignette(c);
+
+    Utils.text(c, Campaign.codename, cx, 128, {
+      size: 13, color: CONFIG.colors.gold, align: 'center', glow: 6 });
+    Utils.text(c, 'SECTOR ' + g.sector + ' / ' + Campaign.count(), cx, 166, {
+      size: 16, color: CONFIG.colors.accent, align: 'center' });
+    Utils.text(c, def.name, cx, 216, {
+      size: 44, color: '#fff', align: 'center', glow: 20, glowColor: CONFIG.colors.accent });
+    Utils.text(c, def.sub, cx, 246, { size: 14, color: '#9fb3d1', align: 'center' });
+
+    // --- story dialogue (typewriter across the entries in order) ---
+    const size = 14, lh = 20, entryGap = 14, textX = 84, maxW = 552;
+    const blocks = def.brief.map(b => ({ who: b.who, lines: this._wrap(c, b.text, maxW, size) }));
+    let panelH = 26, totalChars = 0;
+    for (const b of blocks) {
+      panelH += 16 + b.lines.length * lh + entryGap;
+      for (const ln of b.lines) totalChars += ln.length + 1;
+    }
+    const py = 288;
+    this.panel(c, 56, py, 608, panelH, 0.62);
+
+    let budget = Math.floor(g.briefT / 15);    // chars revealed so far
+    g.briefRevealed = budget >= totalChars;
+    let y = py + 34;
+    for (const b of blocks) {
+      if (budget <= 0) break;
+      Utils.text(c, '▸ ' + b.who, textX, y, {
+        size: 11.5, color: Campaign.speakerColor(b.who), glow: 6 });
+      y += 16;
+      for (const ln of b.lines) {
+        if (budget <= 0) break;
+        Utils.text(c, ln.slice(0, budget), textX, y, { size, color: '#dfe9ff' });
+        budget -= ln.length + 1;
+        y += lh;
+      }
+      y += entryGap;
+    }
+
+    // --- threat readout (intel is always visible) ---
+    const ty = py + panelH + 18;
+    this.panel(c, 56, ty, 608, 98, 0.62);
+    Utils.text(c, 'THREAT ASSESSMENT', textX, ty + 28, {
+      size: 11.5, color: CONFIG.colors.danger, glow: 6 });
+    Utils.text(c, def.threat, textX, ty + 51, { size: 13, color: '#dfe9ff' });
+    Utils.text(c, 'COMBAT WAVES ' + def.waves.length +
+      '   ·   HOSTILE COMMAND: ' + Campaign.bossFor(def).name, textX, ty + 76, {
+      size: 12, color: '#9fb3d1' });
+
+    // --- engage prompt ---
+    const a = 0.6 + 0.4 * Math.sin(this.menuPulse);
+    Utils.text(c, g.briefRevealed ? '▶  FIRE / ENTER — ENGAGE' : 'FIRE / ENTER — SKIP',
+      cx, ty + 152, { size: 18, color: '#fff', align: 'center', glow: 12, alpha: a });
+    Utils.text(c, 'Q — RETURN TO COMMAND', cx, ty + 180, {
+      size: 12, color: '#9fb3d1', align: 'center' });
   }
 
   drawPause(c) {
@@ -339,7 +527,11 @@ class UI {
       align: 'center', glow: 22,
     });
     const modeLabel = (CONFIG.modes.find(m => m.id === g.mode) || {}).label || '';
-    Utils.text(c, g.victory ? 'CAMPAIGN COMPLETE · EARTH SECURED' : modeLabel + ' RUN', cx, 332, {
+    const sub = g.victory ? 'CAMPAIGN COMPLETE · EARTH SECURED'
+      : g.mode === 'campaign'
+        ? 'FELL IN SECTOR ' + g.sector + ' — ' + Campaign.sector(g.sector).name
+        : modeLabel + ' RUN';
+    Utils.text(c, sub, cx, 332, {
       size: 13, color: g.victory ? CONFIG.colors.good : '#9fb3d1', align: 'center', glow: g.victory ? 6 : 0,
     });
 
@@ -379,6 +571,16 @@ class UI {
     Utils.text(c, 'O  settings   ·   A  awards   ·   Q  return to menu', cx, 690, {
       size: 14, color: '#9fb3d1', align: 'center',
     });
+
+    // Victory epilogue: the final comm exchange fades in line by line over
+    // the Earth horizon (goT is reset by Game.endGame).
+    if (g.victory) {
+      this.goT = (this.goT || 0) + 16.7;
+      CAMPAIGN_EPILOGUE.forEach((l, i) => {
+        const a = Utils.clamp((this.goT - 600 - i * 900) / 500, 0, 1);
+        if (a > 0) this._dialogueLine(c, l.who, l.text, cx, 740 + i * 27, 12.5, a);
+      });
+    }
   }
 
   // Big banner shown at the start of a wave / when a boss appears. Sweeps in

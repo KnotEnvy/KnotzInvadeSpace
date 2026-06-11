@@ -5,8 +5,12 @@
  * ===================================================================== */
 
 class Wave {
-  constructor(game, cols, rows, speed, armorRatio, rng) {
+  // `mix` (optional) is a scripted composition from the campaign data:
+  // { armor, stinger, splitter, elite } chances that REPLACE the waveCount
+  // formulas below, so authored sectors control exactly what spawns.
+  constructor(game, cols, rows, speed, armorRatio, rng, mix = null) {
     this.game = game;
+    this.mix = mix;
     // Composition RNG: seeded for the Daily Challenge (so formations match
     // for everyone that day), plain Math.random otherwise.
     this.rng = rng || Math.random;
@@ -35,10 +39,13 @@ class Wave {
 
   create(armorRatio) {
     const wc = this.game.waveCount;
-    const stingerChance = Utils.clamp(0.08 + wc * 0.015, 0, 0.30);
-    const splitterChance = wc >= 3 ? Utils.clamp(0.04 + wc * 0.012, 0, 0.22) : 0;
+    const stingerChance = this.mix ? (this.mix.stinger || 0)
+      : Utils.clamp(0.08 + wc * 0.015, 0, 0.30);
+    const splitterChance = this.mix ? (this.mix.splitter || 0)
+      : (wc >= 3 ? Utils.clamp(0.04 + wc * 0.012, 0, 0.22) : 0);
     const extraElite = this.game.mode === 'daily' ? this.game.dailyMods.eliteChanceAdd : 0;
-    const eliteChance = CONFIG.elite.chance + wc * 0.004 + extraElite;
+    const eliteChance = this.mix ? (this.mix.elite || 0)
+      : CONFIG.elite.chance + wc * 0.004 + extraElite;
     for (let r = 0; r < this.rows; r++) {
       for (let col = 0; col < this.cols; col++) {
         const sx = col * this.cell;

@@ -192,15 +192,15 @@ const CONFIG = {
 
   // Game modes selectable from the menu.
   modes: [
-    { id: 'campaign', label: 'CAMPAIGN', desc: 'Clear 5 sectors to reach Earth' },
+    { id: 'campaign', label: 'CAMPAIGN', desc: 'Fight home through 5 sectors to save Earth' },
     { id: 'endless',  label: 'ENDLESS',  desc: 'Survive as long as you can' },
     { id: 'daily',    label: 'DAILY',    desc: "Seeded run · today's modifiers" },
   ],
 
-  // Campaign mode: a defined run with a victory at the end.
+  // Campaign tunables. The story structure itself (sectors, scripted waves,
+  // bosses, dialogue) is authored data in src/campaign.js.
   campaign: {
-    winBosses: 5,          // defeat this many bosses to win (reach the finale)
-    finaleBackground: 8,   // backgrounds[] index of backgroundEarth.png
+    sectorBonus: 500,      // score bonus per sector secured (x sector number)
   },
 
   // Daily Challenge: a date-seeded run with a couple of random modifiers.
@@ -219,7 +219,8 @@ const CONFIG = {
   },
 
   // Save schema version (bumped when the persisted shape changes; see meta.js).
-  saveVersion: 2,
+  // v3 adds `campaign: { best, wins }` (story progress).
+  saveVersion: 3,
 
   storageKey: 'knotz_invade_space_save_v1',
 };

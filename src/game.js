@@ -74,12 +74,23 @@ class Game {
     this.creditsEarned = 0;
     this.freezeTimer = 0;   // hit-stop (real-time; skips sim steps, see update)
     this.punch = 0;         // brief zoom-in punch on big impacts
+    // campaign (story mode) flow
+    this.sector = 1;          // current campaign sector (1-based)
+    this.sectorWave = 0;      // waves started within the sector (0 = none yet)
+    this.warpTimer = 0;       // post-boss loot window before the next jump
+    this.briefT = 0;          // briefing typewriter clock
+    this.briefRevealed = false; // set by UI.drawBriefing once all text is out
+    this.comms = [];          // queued {who,text,t,dur} comm messages
   }
 
   _tempo() { return Math.min(1.6, 1 + this.level * 0.06); }
 
   // --- run-modifier helpers (mode/daily aware) ----------------------------
-  aggroMul()        { return this.mode === 'daily' ? this.dailyMods.aggroMul : 1; }
+  aggroMul() {
+    if (this.mode === 'daily') return this.dailyMods.aggroMul;
+    if (this.mode === 'campaign') return Campaign.sector(this.sector).aggro || 1;
+    return 1;
+  }
   playerDamageMul() { return this.mode === 'daily' ? this.dailyMods.playerDamageMul : 1; }
   bossEvery()       { return this.mode === 'daily' ? this.dailyMods.bossEvery : CONFIG.wave.bossEvery; }
   // Seeded composition RNG for the Daily Challenge; plain random otherwise.
@@ -115,10 +126,55 @@ class Game {
     // build drones granted by the hangar
     const dn = Meta.droneCount();
     this.drones = Array.from({ length: dn }, (_, i) => new Drone(this, i, dn));
-    this.starfield.setBackground(0);
+    if (this.mode === 'campaign') {
+      // The campaign opens on a sector briefing, not straight into combat.
+      this.enterSector(1);
+    } else {
+      this.starfield.setBackground(0);
+      this.state = 'playing';
+      Sound.startMusic(1);
+      this.startWaveOrBoss();
+    }
+  }
+
+  // --- campaign (story mode) -----------------------------------------------
+  // Arrive in sector n: clear the battlefield (nothing survives a jump), swap
+  // the backdrop, and open the briefing interstitial. The starfield streaks
+  // into warp while the briefing is up; launchSector() drops out of warp and
+  // starts the sector's first scripted wave.
+  enterSector(n) {
+    this.sector = n;
+    this.sectorWave = 0;
+    this.warpTimer = 0;
+    this.level = n;                       // music tempo + sector colour grade
+    this.comms.length = 0;
+    this.banner = null;
+    this.bullets.forEach(b => b.free = true);
+    this.enemyBullets.forEach(b => b.free = true);
+    this.powerups.forEach(p => p.free = true);
+    Utils.compactRelease(this.asteroids, this.asteroidPool, () => true);
+    this.waves = [];
+    this.boss = null;
+    this._minionQueue.length = 0;
+    this.hazardTimer = CONFIG.hazard.spawnBase;
+    this.starfield.setBackground(Campaign.sector(n).bg);
+    this.briefT = 0;
+    this.briefRevealed = false;
+    this.state = 'briefing';
+    Sound.stopMusic();
+  }
+
+  launchSector() {
     this.state = 'playing';
-    Sound.startMusic(1);
+    Sound.startMusic(this._tempo());
     this.startWaveOrBoss();
+  }
+
+  // Queue a story comm line ({who, text}); the HUD shows one at a time.
+  say(line) {
+    if (!line) return;
+    this.comms.push({ who: line.who, text: line.text, t: 0,
+      dur: 2600 + line.text.length * 28 });
   }
 
   openHangar() { this.state = 'hangar'; this.hangar.open(); Sound.uiSelect(); }
@@ -134,6 +190,7 @@ class Game {
 
   endGame() {
     this.state = 'gameover';
+    this.ui.goT = 0;          // restart the victory-epilogue fade-in
     Sound.stopMusic();
     if (this.victory) Sound.extraLife(); else Sound.gameOver();
     if (this.score > Meta.hi) { Meta.hi = this.score; this.newHiScore = true; }
@@ -169,14 +226,12 @@ class Game {
   // --- wave / boss spawning ----------------------------------------------
   startWaveOrBoss() {
     Ach.onWave(this.waveCount);
+    if (this.mode === 'campaign') { this.startCampaignWave(); return; }
     if (this.waveCount % this.bossEvery() === 0) {
       const tier = this.bossesSlain + 1;
-      const finalBoss = this.mode === 'campaign' && tier >= CONFIG.campaign.winBosses;
       this.boss = new Boss(this, tier);
       this.bossHitless = true;     // track the "Untouchable" streak for this fight
-      if (finalBoss) this.starfield.setBackground(CONFIG.campaign.finaleBackground);
-      this.showBanner(finalBoss ? 'FINAL BOSS' : 'WARNING',
-        this.boss.def.name + ' APPROACHES', CONFIG.colors.danger);
+      this.showBanner('WARNING', this.boss.def.name + ' APPROACHES', CONFIG.colors.danger);
       Sound.bossAlarm();
     } else {
       const w = CONFIG.wave;
@@ -189,6 +244,37 @@ class Game {
       this.showBanner('WAVE ' + this.waveCount, null, CONFIG.colors.accent);
       Sound.waveStart();
       this.maybeSpawnMiniBoss();
+    }
+  }
+
+  // Campaign sectors are scripted, not formula-rolled: each wave comes from
+  // the sector's authored descriptor list (composition, size, speed, optional
+  // mini-boss escort + comm line), and the sector ends with its named boss.
+  startCampaignWave() {
+    const def = Campaign.sector(this.sector);
+    this.sectorWave++;
+    if (this.sectorWave > def.waves.length) {
+      const bdef = Campaign.bossFor(def);
+      this.boss = new Boss(this, this.sector, { def: bdef });
+      this.bossHitless = true;
+      this.showBanner(bdef.final ? 'FINAL BOSS' : 'SECTOR BOSS',
+        bdef.name + ' APPROACHES', CONFIG.colors.danger);
+      this.say(def.taunt);
+      Sound.bossAlarm();
+      return;
+    }
+    const wd = def.waves[this.sectorWave - 1];
+    const speed = wd.speed * Meta.diffMods().enemySpeedMul;
+    this.waves = [new Wave(this, wd.cols, wd.rows, speed, wd.mix.armor || 0,
+      this.waveRng(), wd.mix)];
+    this.showBanner('WAVE ' + this.sectorWave + ' / ' + def.waves.length,
+      null, CONFIG.colors.accent);
+    Sound.waveStart();
+    this.say(wd.say);
+    if (wd.mini) {
+      this.boss = new Boss(this, this.sector, { mini: true });
+      this.showBanner('MINI-BOSS', this.boss.def.name, CONFIG.colors.accent2);
+      Sound.bossAlarm();
     }
   }
 
@@ -224,11 +310,24 @@ class Game {
       this.spawnPowerUp(boss.x + Utils.rand(0, boss.width), boss.y + Utils.rand(0, boss.height));
     this.spawnPowerUp(cx, cy, 'life');
 
-    // Campaign mode ends in victory once enough bosses have fallen.
-    if (this.mode === 'campaign' && this.bossesSlain >= CONFIG.campaign.winBosses) {
-      this.victory = true;
-      Ach.onVictory();
-      this.endGame();
+    if (this.mode === 'campaign') {
+      Meta.setCampaignBest(this.sector);     // sector cleared — persist progress
+      if (boss.def.final || this.sector >= Campaign.count()) {
+        this.victory = true;
+        Meta.addCampaignWin();
+        Ach.onVictory();
+        this.endGame();
+        return;
+      }
+      // Sector secured: bonus score, then a short warp window so the boss
+      // loot can be scooped before update() jumps us to the next sector.
+      const bonus = CONFIG.campaign.sectorBonus * this.sector;
+      this.score += bonus;
+      this.waveCount++;
+      this.showBanner('SECTOR ' + this.sector + ' SECURED',
+        '+' + Utils.commas(bonus) + ' BONUS', CONFIG.colors.good);
+      this.say(Campaign.sector(this.sector).clearSay);
+      this.warpTimer = 3400;
       return;
     }
 
@@ -377,12 +476,16 @@ class Game {
   updateHazards(dt) {
     this.hazardTimer -= dt;
     if (this.hazardTimer <= 0) {
-      const rate = this.mode === 'daily' ? this.dailyMods.hazardRateMul : 1;
-      const interval = Math.max(CONFIG.hazard.spawnMin, CONFIG.hazard.spawnBase - this.level * 350) / rate;
+      const camp = this.mode === 'campaign' ? Campaign.sector(this.sector) : null;
+      const rate = this.mode === 'daily' ? this.dailyMods.hazardRateMul
+        : camp ? camp.hazardMul : 1;
+      const interval = Math.max(CONFIG.hazard.spawnMin, CONFIG.hazard.spawnBase - this.level * 350) / (rate || 1);
       this.hazardTimer = interval * Utils.rand(0.7, 1.3);
-      // a bit calmer while a boss is on screen
-      if (!this.boss || Utils.chance(0.5)) {
-        const bigChance = this.mode === 'daily' ? this.dailyMods.bigAsteroidChance : 0.6;
+      // a bit calmer while a boss is on screen; rate-0 sectors stay clear, and
+      // nothing spawns during the post-boss warp window (loot collection).
+      if (rate > 0 && this.warpTimer <= 0 && (!this.boss || Utils.chance(0.5))) {
+        const bigChance = this.mode === 'daily' ? this.dailyMods.bigAsteroidChance
+          : camp ? camp.bigAsteroid : 0.6;
         const sizeKey = Utils.chance(bigChance) ? 'big' : 'med';
         const x = Utils.rand(60, CONFIG.WIDTH - 60);
         this.spawnAsteroid(x, -50, sizeKey);
@@ -461,6 +564,9 @@ class Game {
 
     if (this.state === 'hangar') this.hangar.update(dt);
     if (this.state === 'settings') this.settings.update(dt);
+    // Warp streaks while a campaign briefing is up; settle back otherwise.
+    this.starfield.setWarp(this.state === 'briefing' ? 1 : 0);
+    if (this.state === 'briefing') this.briefT += dt;
     if (this.state !== 'playing') return;
 
     // Hit-stop: hold the simulation for a beat so big impacts land. Particles
@@ -483,6 +589,19 @@ class Game {
 
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.combo = 0; }
     if (this.banner) { this.banner.time += dt; if (this.banner.time > this.banner.duration) this.banner = null; }
+
+    // story comms tick one at a time
+    if (this.comms.length) {
+      const m = this.comms[0];
+      m.t += dt;
+      if (m.t > m.dur) this.comms.shift();
+    }
+
+    // post-boss warp window (campaign): scoop the loot, then jump
+    if (this.warpTimer > 0 && !this.gameOverPending) {
+      this.warpTimer -= dt;
+      if (this.warpTimer <= 0) { this.enterSector(this.sector + 1); return; }
+    }
 
     if (!this.boss && this.waves.length && this.waves[0].complete) {
       this.waves = [];
@@ -611,6 +730,15 @@ class Game {
       case 'achievements':
         if (i.wasPressed('Enter', ' ', 'Escape', 'q') || clicked) this.closeAchievements();
         break;
+      case 'briefing':
+        if (i.wasPressed('Enter', ' ') || clicked) {
+          Sound.init();
+          // first press fast-forwards the typewriter, the next one launches
+          if (!this.briefRevealed) this.briefT += 1e9;
+          else { Sound.uiSelect(); this.launchSector(); }
+        }
+        else if (i.wasPressed('q', 'Escape')) this.toMenu();
+        break;
       case 'playing':
         if (i.wasPressed('Escape', 'p')) { this.state = 'paused'; Sound.stopMusic(); Sound.uiSelect(); }
         break;
@@ -640,7 +768,8 @@ class Game {
     this.starfield.draw(sc);
 
     const worldVisible = this.state !== 'menu' && this.state !== 'hangar' &&
-      this.state !== 'settings' && this.state !== 'achievements';
+      this.state !== 'settings' && this.state !== 'achievements' &&
+      this.state !== 'briefing';
     if (worldVisible) {
       sc.save();
       if (this.punch > 0.0005) {
@@ -666,6 +795,8 @@ class Game {
 
     if (this.state === 'menu') {
       this.ui.drawMenu(c);
+    } else if (this.state === 'briefing') {
+      this.ui.drawBriefing(c);
     } else if (this.state === 'hangar') {
       this.hangar.draw(c);
     } else if (this.state === 'settings') {

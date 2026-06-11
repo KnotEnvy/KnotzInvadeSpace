@@ -46,7 +46,34 @@ const BOSS_TYPES = [
       [{ type: 'curtain', count: 11, gap: 2 }, { type: 'aimed', count: 3, spread: 0.2 }],
     ],
   },
+  {
+    // Ring fortress: guards the campaign Blockade (sector 4) and joins the
+    // endless rotation as the 4th archetype. Pulsing rings whose rotation
+    // flips direction between phases, so safe lanes never stay safe.
+    id: 'herald', name: 'VOID HERALD', frameY: 3, color: CONFIG.colors.accent2,
+    move: 'figure8', scale: 1.05, hpMul: 1.15, scoreMul: 1.3, fireBase: 950, fireMin: 380,
+    phases: [
+      [{ type: 'ring', count: 12, spin: 0.0014 }],
+      [{ type: 'ring', count: 14, spin: -0.0018, aimed: true }, { type: 'aimed', count: 2, spread: 0.3 }],
+      [{ type: 'spiral', arms: 3, spin: -0.09 }, { type: 'shotgun', count: 5, spread: 0.4 }],
+    ],
+  },
 ];
+
+// The campaign finale only (never in the endless rotation): the mind of the
+// swarm. Four phases that audition every pattern in the book, a huge hull,
+// and `final: true` so the Game/UI treat the kill as the campaign victory.
+const FINAL_BOSS = {
+  id: 'mothership', name: 'THE MOTHERSHIP', frameY: 0, color: CONFIG.colors.gold,
+  move: 'lumber', scale: 1.45, hpMul: 1.8, scoreMul: 2.5, fireBase: 1150, fireMin: 380,
+  final: true,
+  phases: [
+    [{ type: 'spread', count: 6, spread: 0.2 }, { type: 'aimed', count: 1 }],
+    [{ type: 'ring', count: 16, spin: 0.0012, aimed: true }],
+    [{ type: 'curtain', count: 12, gap: 2 }, { type: 'shotgun', count: 5, spread: 0.45 }],
+    [{ type: 'spiral', arms: 4, spin: 0.08 }, { type: 'aimed', count: 3, spread: 0.18 }],
+  ],
+};
 
 const MINIBOSS_TYPES = [
   {

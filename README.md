@@ -16,6 +16,13 @@ No install, no sign-up. Runs on desktop and mobile.
 
 ## ✨ Features
 
+- **Story campaign — OPERATION HOMECOMING** — fight home through **5 hand-scripted
+  sectors** to break the siege of Earth, flying a stolen Hive ship with an awakened
+  AI. Sector briefings with story dialogue, in-mission comm chatter (your ship,
+  Earth Command... and the HIVEMIND itself), warp jumps, scripted waves and
+  mini-boss escorts, named sector bosses and a final 4-phase **Mothership** duel.
+- **Three game modes** — the story **Campaign**, an unbounded **Endless** mode,
+  and a date-seeded **Daily Challenge** with rotating modifiers.
 - **Roguelite meta-progression** — earn **credits** every run and spend them in the
   **Hangar** on 7 permanent upgrades (hull, engines, beam, twin auto-cannons, magnet
   field, combat drone, start-shield). Progress is saved locally between sessions.
@@ -34,8 +41,9 @@ No install, no sign-up. Runs on desktop and mobile.
   (and regenerates) your ship's energy.
 - **Power-ups** — Rapid Fire, Spread Shot, Shield, Energy refill, Smart Bomb and
   Extra Life drop from destroyed enemies.
-- **Boss battles** — a three-phase Overlord every 5th wave with aimed shots,
-  spread fire and radial bullet storms. Each tier is tougher.
+- **Boss battles** — a rotating cast of data-driven bosses (**Overlord**,
+  **Weaver**, **Warden**, **Void Herald**) with distinct movement and attack
+  patterns, plus quick **mini-boss** escorts on ordinary waves. Each tier is tougher.
 - **Endless progression** — difficulty, formation size and armor scale up; each
   cleared sector swaps in a new space backdrop.
 - **Parallax starfields** drifting over your space background art.
@@ -113,7 +121,8 @@ scripts (so it runs straight from the file system — no bundler required):
 | `src/meta.js`     | Roguelite profile (credits/upgrades/hi-score) + upgrade catalog |
 | `src/player.js`   | Player ship: movement, banking, weapons, shield, lives, upgrades |
 | `src/enemy.js`    | Enemy base + Beetlemorph / Rhinomorph / Stinger / Splitter + elites |
-| `src/boss.js`     | Multi-phase boss with attack patterns + health bar |
+| `src/boss.js`     | Data-driven multi-phase bosses + mini-bosses + the final Mothership |
+| `src/campaign.js` | OPERATION HOMECOMING: scripted sectors, story dialogue, threat intel |
 | `src/wave.js`     | Formation movement, edge bouncing, diver/fire scheduling, composition |
 | `src/drone.js`    | Combat Drone wingman that auto-fires |
 | `src/hazard.js`   | Drifting, splitting asteroids |

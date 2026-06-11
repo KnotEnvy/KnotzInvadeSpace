@@ -22,6 +22,7 @@ class MetaProfile {
     const def = {
       version: CONFIG.saveVersion, hi: 0, credits: 0, upgrades: {}, muted: false,
       settings: { ...CONFIG.settings }, achievements: {}, daily: {},
+      campaign: { best: 0, wins: 0 },
     };
     try {
       const raw = localStorage.getItem(CONFIG.storageKey);
@@ -38,6 +39,7 @@ class MetaProfile {
         settings: { ...CONFIG.settings, ...(p.settings || {}) },
         achievements: p.achievements || {},
         daily: p.daily || {},
+        campaign: { best: 0, wins: 0, ...(p.campaign || {}) },
       };
     } catch { return def; }
   }
@@ -85,6 +87,16 @@ class MetaProfile {
     this.save();
     return true;
   }
+
+  // --- campaign story progress (furthest sector secured + victories) ------
+  campaignBest() { return this.data.campaign.best || 0; }
+  setCampaignBest(sector) {
+    if (sector <= this.campaignBest()) return;
+    this.data.campaign.best = sector;
+    this.save();
+  }
+  campaignWins() { return this.data.campaign.wins || 0; }
+  addCampaignWin() { this.data.campaign.wins = this.campaignWins() + 1; this.save(); }
 
   // --- daily-challenge best scores (kept small: last ~10 days) -----------
   dailyBest(key) { return this.data.daily[key] || 0; }

@@ -32,18 +32,29 @@ class Starfield {
     }
     this.shooting = [];
     this.shootTimer = Utils.rand(2200, 5200);
+
+    // Hyperspace warp (campaign sector jumps). `warp` eases toward
+    // `warpTarget` each update; stars accelerate and stretch into streaks.
+    this.warp = 0;
+    this.warpTarget = 0;
   }
 
   setBackground(index) {
     if (this.images.length) this.bgIndex = index % this.images.length;
   }
 
+  // 0 = normal drift, 1 = full hyperspace. The Game sets this per state.
+  setWarp(target) { this.warpTarget = Utils.clamp(target, 0, 1); }
+
   update(dt) {
     const k = dt / CONFIG.STEP_MS;
-    this.bgOffset += 0.08 * k;
+    this.warp = Utils.lerp(this.warp, this.warpTarget, Utils.clamp(0.045 * k, 0, 1));
+    if (this.warp < 0.003 && this.warpTarget === 0) this.warp = 0;
+    const boost = 1 + this.warp * (Meta.reducedMotion() ? 4 : 13);
+    this.bgOffset += 0.08 * k * boost;
     for (const layer of this.layers) {
       for (const s of layer.stars) {
-        s.y += layer.speed * k;
+        s.y += layer.speed * k * boost;
         s.tw += s.tws * k;
         if (s.y > CONFIG.HEIGHT + 2) { s.y = -2; s.x = Math.random() * CONFIG.WIDTH; }
       }
@@ -86,11 +97,25 @@ class Starfield {
       c.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
     }
 
-    // Parallax stars.
+    // Parallax stars. During a warp jump they stretch into vertical streaks
+    // (length scales with layer speed for parallax; calm under reduced motion).
+    const warp = this.warp;
+    const streakMul = warp * (Meta.reducedMotion() ? 8 : 26);
     c.save();
     for (const layer of this.layers) {
       for (const s of layer.stars) {
         const a = 0.5 + 0.5 * Math.sin(s.tw);
+        if (warp > 0.02) {
+          const len = layer.speed * streakMul + warp * 6;
+          c.globalAlpha = a * (0.55 + warp * 0.35);
+          c.strokeStyle = s.hue;
+          c.lineWidth = s.r * (1 - warp * 0.35);
+          c.beginPath();
+          c.moveTo(s.x, s.y - len);
+          c.lineTo(s.x, s.y);
+          c.stroke();
+          continue;
+        }
         if (s.hero && Meta.fx()) {
           // soft additive cross-flare on the brightest near stars
           c.globalCompositeOperation = 'lighter';
